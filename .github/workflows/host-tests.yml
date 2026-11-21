@@ -1,0 +1,20 @@
+name: C 모듈 호스트 단위 테스트
+on:
+  push:
+    branches: [jun_GPT]
+  workflow_dispatch:
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 컴파일 도구 확인
+        run: gcc --version
+      - name: 타이머 모듈
+        run: bash tests/run_host_tests.sh
+      - name: 스텝 모터 컨트롤러
+        run: bash tests/run_stepper_tests.sh
+      - name: 서보 PWM
+        run: bash tests/run_servo_tests.sh
+      - name: 레이더 알고리즘
+        run: bash tests/run_pipeline_tests.sh
