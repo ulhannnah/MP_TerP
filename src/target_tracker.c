@@ -18,7 +18,13 @@ static uint32_t abs_range(uint32_t a,uint32_t b){return a>b?a-b:b-a;}
 void TargetTracker_Update(TargetTracker *t,const TargetCandidate *c,uint16_t n,uint32_t now){
     uint8_t matched[TRACKER_MAX_TARGETS]={0};
     if(!t||(n!=0u&&!c))return;
-    /* Prioritize nearest association for each candidate; no duplicate target match. */
+    /* Explicit slot expiry: expired LOST tracks are reusable for new IDs. */
+    for(uint8_t j=0;j<TRACKER_MAX_TARGETS;j++) {
+        RadarTarget *p=&t->targets[j];
+        if(p->state==TARGET_LOST &&
+           (uint32_t)(now-p->last_seen_ms)>t->lost_timeout_ms)
+            p->state=TARGET_EMPTY;
+    }
     for(uint16_t i=0;i<n;i++){
         uint8_t best=TRACKER_MAX_TARGETS;
         uint64_t best_score=UINT64_MAX;
