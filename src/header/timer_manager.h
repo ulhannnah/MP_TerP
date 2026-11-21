@@ -4,11 +4,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/* Hardware channels, not application functions. No channel is hard-wired to a device. */
 typedef enum {
-    TIMER_CH_STEPPER = 0,
-    TIMER_CH_TRIGGER = 1,
-    TIMER_CH_SYSTEM = 2,
-    TIMER_CH_RESERVED = 3
+    TIMER_CH0 = 0,
+    TIMER_CH1 = 1,
+    TIMER_CH2 = 2,
+    TIMER_CH3 = 3,
+    TIMER_CHANNEL_NONE = 255
 } TimerChannel;
 
 typedef enum {
@@ -23,18 +25,30 @@ typedef enum {
 
 typedef void (*TimerCallback)(void *context);
 
-/* Call after SOSC_init_8MHz(), SPLL_init_160MHz(), NormalRUNmode_80MHz().
- * SPLLDIV2 = 40 MHz, LPIT0 exclusively owned by this module.
- * Init starts CH2 at 1 ms; CH0 and CH1 require Configure before Start.
+/* Initialize LPIT0. Clock source is PCC PCS (0..7); hz must reflect the
+ * selected clock source and be an integer multiple of 1 MHz.
+ * Example: { 6u, 40000000u, TIMER_CH2 } for SPLLDIV2 40 MHz.
+ * Set tick_channel=TIMER_CHANNEL_NONE to reserve no system tick channel.
+ * One selected channel (if any) generates a 1 ms monotonic counter.
+ * Must be called after clocks_and_modes initialization.
  */
-TimerResult TimerManager_Init(void);
+typedef struct {
+    uint8_t pcc_clock_source;
+    uint32_t clock_hz;
+    TimerChannel tick_channel;
+} TimerManagerConfig;
+
+TimerResult TimerManager_Init(const TimerManagerConfig *config);
+
+/* All non-tick channels (CH0..CH3) are independently configurable.
+ * Configure leaves the timer STOPPED, and stops any previous operation.
+ * one_shot=true stops the channel at timeout (LPIT TSOI).
+ * Callbacks execute directly in IRQ context: keep them very short.
+ */
 TimerResult TimerManager_Configure(TimerChannel channel, uint32_t period_us, bool one_shot);
 TimerResult TimerManager_RegisterCallback(TimerChannel channel, TimerCallback callback, void *context);
 TimerResult TimerManager_Start(TimerChannel channel);
 TimerResult TimerManager_Stop(TimerChannel channel);
 uint32_t TimerManager_GetTickMs(void);
-/* Display flags coalesce repeated requests; call these from foreground, not ISR. */
-bool TimerManager_TakeOledRequest(void);
-bool TimerManager_TakeLcdRequest(void);
 
 #endif /* TIMER_MANAGER_H_ */
