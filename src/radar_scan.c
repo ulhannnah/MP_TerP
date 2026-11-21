@@ -4,7 +4,7 @@ bool RadarScan_Init(RadarScan *s,const RadarScanConfig *cfg) {
     if(!s||!cfg||!cfg->move||!cfg->trigger||!cfg->take||
        cfg->step_mdeg<=0||cfg->min_angle_mdeg>=cfg->max_angle_mdeg||
        cfg->settle_ms==0||cfg->echo_timeout_ms==0||
-       cfg->step_mdeg>cfg->max_angle_mdeg-cfg->min_angle_mdeg) return false;
+       cfg->step_mdeg>cfg->max_angle_mdeg-cfg->min_angle_mdeg)return false;
     s->cfg=*cfg; s->state=RADAR_IDLE; s->direction=1;
     s->angle_mdeg=cfg->min_angle_mdeg; s->pending=0; s->samples=0; return true;
 }
@@ -31,15 +31,20 @@ void RadarScan_Update(RadarScan *s,uint32_t now) {
     s->last.timestamp_ms=now;
     s->last.valid=valid;
     s->pending=1u; ++s->samples;
-    /* Reflect at boundaries without repeating the endpoint. */
+    /* Reach both physical endpoints even when step does not divide range. */
     {
-        int32_t next=s->angle_mdeg + s->direction*s->cfg.step_mdeg;
+        int64_t next=(int64_t)s->angle_mdeg+
+                     (int64_t)s->direction*s->cfg.step_mdeg;
         if(next>s->cfg.max_angle_mdeg) {
-            s->direction=-1; next=s->angle_mdeg-s->cfg.step_mdeg;
+            next=s->cfg.max_angle_mdeg;s->direction=-1;
         } else if(next<s->cfg.min_angle_mdeg) {
-            s->direction=1; next=s->angle_mdeg+s->cfg.step_mdeg;
+            next=s->cfg.min_angle_mdeg;s->direction=1;
         }
-        s->angle_mdeg=next;
+        /* Never command the same endpoint twice. */
+        if((int32_t)next==s->angle_mdeg)
+            next=(int64_t)s->angle_mdeg+
+                 (int64_t)s->direction*s->cfg.step_mdeg;
+        s->angle_mdeg=(int32_t)next;
     }
     if(s->cfg.move(s->cfg.context,s->angle_mdeg)) {
         s->started_ms=now; s->state=RADAR_SETTLE;
