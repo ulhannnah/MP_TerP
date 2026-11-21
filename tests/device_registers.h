@@ -5,6 +5,7 @@ typedef int IRQn_Type;
 enum { LPIT0_Ch0_IRQn=48, LPIT0_Ch1_IRQn=49, LPIT0_Ch2_IRQn=50, LPIT0_Ch3_IRQn=51 };
 #define PCC_LPIT_INDEX 55
 #define PCC_PCCn_CGC_MASK (1u << 30)
+#define PCC_PCCn_PCS_MASK (7u << 24)
 #define PCC_PCCn_PCS(x) ((uint32_t)(x) << 24)
 #define LPIT_MCR_M_CEN_MASK (1u << 0)
 typedef struct {volatile uint32_t TVAL; volatile uint32_t CVAL; volatile uint32_t TCTRL;} MOCK_TMR;
