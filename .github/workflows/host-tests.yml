@@ -1,7 +1,5 @@
 name: C 모듈 호스트 단위 테스트
-on:
-  push:
-    branches: [jun_GPT]
+'on':
   workflow_dispatch:
 jobs:
   host-tests:
