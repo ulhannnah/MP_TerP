@@ -1,7 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
-#include "device_registers.h"
 #include "timer_manager.h"
 #include "stepper_controller.h"
 
