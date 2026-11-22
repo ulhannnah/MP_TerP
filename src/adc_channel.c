@@ -2,7 +2,7 @@
 #include <stddef.h>
 bool ADCChannel_Init(ADCChannel *a,const ADCChannelConfig *cfg){
     if(!a||!cfg||!(cfg->adc==ADC0||cfg->adc==ADC1)||
-       cfg->clock_pcs==0u||cfg->clock_pcs>7u||cfg->channel>31u||
+       cfg->clock_pcs==0u||cfg->clock_pcs>7u||cfg->channel>=31u||
        cfg->vref_mv==0u)return false;
     a->initialized=0u;a->config=*cfg;
     PCC->PCCn[cfg->pcc_index]&=~PCC_PCCn_CGC_MASK;
