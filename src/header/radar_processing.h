@@ -9,6 +9,7 @@
 #include "target_tracker.h"
 typedef struct {
     RadarFrame frame;
+    RadarFrame display_frame; /* last completed frame, retained for drawing */
     DistanceFilter filters[RADAR_FRAME_MAX_BINS];
     BackgroundFilter background;
     TargetDetector detector;
