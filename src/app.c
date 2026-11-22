@@ -93,7 +93,7 @@ void App_Update(App *app,uint32_t now){
     if(app->config.hw.adc_read(app->config.hw.context,&raw))
         (void)TargetSelector_Update(&app->selector,raw);
     id=TargetSelector_GetId(&app->selector);
-    AimController_Select(&app->aim,id);
+    if(app->aim.selected_id!=id)AimController_Select(&app->aim,id);
     AimController_Update(&app->aim,&app->processing.tracker,now);
     valid=TargetTracker_Get(&app->processing.tracker,id,&selected) &&
           selected.state!=TARGET_LOST &&
@@ -112,7 +112,7 @@ void App_Update(App *app,uint32_t now){
     if(app->config.hw.oled_flush &&
        (uint32_t)(now-app->last_oled_ms)>=app->config.oled_period_ms){
         app->last_oled_ms=now;
-        if(RadarRenderer_Draw(&app->renderer,&app->processing.frame,
+        if(RadarRenderer_Draw(&app->renderer,&app->processing.display_frame,
              &app->processing.tracker,id,app->scan.angle_mdeg))
             (void)app->config.hw.oled_flush(app->config.hw.context);
     }
