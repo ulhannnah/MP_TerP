@@ -8,6 +8,7 @@ bool RadarFrame_Init(RadarFrame *f,int32_t min,int32_t max,int32_t step) {
     if(bins>RADAR_FRAME_MAX_BINS)return false;
     f->bins=(uint16_t)bins;
     f->first_angle_mdeg=min;
+    f->last_angle_mdeg=max;
     f->step_mdeg=step;
     f->frame_number=0u;
     f->direction=1;
@@ -24,7 +25,8 @@ bool RadarFrame_Add(RadarFrame *f,const RadarSample *sample) {
     if(!f||!sample||!f->bins)return false;
     offset=(int64_t)sample->angle_mdeg-f->first_angle_mdeg;
     if(offset<0)return false;
-    idx=(offset+f->step_mdeg/2)/f->step_mdeg;
+    idx=sample->angle_mdeg==f->last_angle_mdeg ?
+        (int64_t)f->bins-1 : (offset+f->step_mdeg/2)/f->step_mdeg;
     if(idx<0||idx>=f->bins)return false;
     if(!f->present[idx])++f->received;
     f->samples[idx]=*sample;f->present[idx]=1u;
