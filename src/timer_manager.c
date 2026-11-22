@@ -1,5 +1,5 @@
 #include "timer_manager.h"
-#include "device_registers.h"
+#include "mp_irq_compat.h"
 
 /* One owner for LPIT0 and LPIT0_Ch0..Ch3_IRQHandler.
  * Users choose channel mapping during application initialization.
@@ -45,7 +45,7 @@ static void program_channel(uint32_t ch, uint32_t period_us, bool one_shot)
     LPIT0->MSR = mask; /* W1C status */
     LPIT0->TMR[ch].TVAL = (period_us * s_clocks_per_us) - 1u;
     LPIT0->TMR[ch].TCTRL = one_shot ? LPIT_TSOI : 0u;
-    NVIC_ClearPendingIRQ(irq_for(ch));
+    MP_NvicClearPending(irq_for(ch));
     LPIT0->MIER |= mask;
 }
 
@@ -60,7 +60,7 @@ TimerResult TimerManager_Init(const TimerManagerConfig *config)
          !valid_channel(config->tick_channel))) return TIMER_ERR_ARGUMENT;
 
     s_initialized = 0u;
-    for (ch = 0u; ch < 4u; ++ch) NVIC_DisableIRQ(irq_for(ch));
+    for (ch = 0u; ch < 4u; ++ch) MP_NvicDisable(irq_for(ch));
 
     PCC->PCCn[PCC_LPIT_INDEX] &= ~PCC_PCCn_CGC_MASK;
     PCC->PCCn[PCC_LPIT_INDEX] =
@@ -89,7 +89,7 @@ TimerResult TimerManager_Init(const TimerManagerConfig *config)
     s_initialized = 1u;
     if (s_tick_channel != TIMER_CHANNEL_NONE) {
         const uint32_t tick = (uint32_t)s_tick_channel;
-        NVIC_EnableIRQ(irq_for(tick));
+        MP_NvicEnable(irq_for(tick));
         LPIT0->TMR[tick].TCTRL |= LPIT_T_EN;
     }
     return TIMER_OK;
@@ -104,11 +104,11 @@ TimerResult TimerManager_Configure(TimerChannel channel, uint32_t period_us, boo
     if (period_us == 0u || period_us > UINT32_MAX / s_clocks_per_us)
         return TIMER_ERR_RANGE;
 
-    NVIC_DisableIRQ(irq_for(ch));
+    MP_NvicDisable(irq_for(ch));
     s_configured[ch] = 0u;
     program_channel(ch, period_us, one_shot);
     s_configured[ch] = 1u;
-    NVIC_EnableIRQ(irq_for(ch));
+    MP_NvicEnable(irq_for(ch));
     return TIMER_OK;
 }
 
@@ -118,14 +118,14 @@ TimerResult TimerManager_RegisterCallback(TimerChannel channel, TimerCallback ca
     const uint32_t ch = (uint32_t)channel;
     if (result != TIMER_OK) return result;
     if (s_initialized == 0u) return TIMER_ERR_NOT_INITIALIZED;
-    NVIC_DisableIRQ(irq_for(ch));
+    MP_NvicDisable(irq_for(ch));
     if ((LPIT0->TMR[ch].TCTRL & LPIT_T_EN) != 0u) {
-        NVIC_EnableIRQ(irq_for(ch));
+        MP_NvicEnable(irq_for(ch));
         return TIMER_ERR_BUSY;
     }
     s_callbacks[ch] = callback;
     s_contexts[ch] = context;
-    if (s_configured[ch] != 0u) NVIC_EnableIRQ(irq_for(ch));
+    if (s_configured[ch] != 0u) MP_NvicEnable(irq_for(ch));
     return TIMER_OK;
 }
 
@@ -136,12 +136,12 @@ TimerResult TimerManager_Start(TimerChannel channel)
     if (result != TIMER_OK) return result;
     if (s_initialized == 0u) return TIMER_ERR_NOT_INITIALIZED;
     if (s_configured[ch] == 0u) return TIMER_ERR_NOT_CONFIGURED;
-    NVIC_DisableIRQ(irq_for(ch));
+    MP_NvicDisable(irq_for(ch));
     LPIT0->TMR[ch].TCTRL &= ~LPIT_T_EN;
     LPIT0->MSR = 1u << ch;
-    NVIC_ClearPendingIRQ(irq_for(ch));
+    MP_NvicClearPending(irq_for(ch));
     LPIT0->TMR[ch].TCTRL |= LPIT_T_EN;
-    NVIC_EnableIRQ(irq_for(ch));
+    MP_NvicEnable(irq_for(ch));
     return TIMER_OK;
 }
 
@@ -151,11 +151,11 @@ TimerResult TimerManager_Stop(TimerChannel channel)
     const uint32_t ch = (uint32_t)channel;
     if (result != TIMER_OK) return result;
     if (s_initialized == 0u) return TIMER_ERR_NOT_INITIALIZED;
-    NVIC_DisableIRQ(irq_for(ch));
+    MP_NvicDisable(irq_for(ch));
     LPIT0->TMR[ch].TCTRL &= ~LPIT_T_EN;
     LPIT0->MSR = 1u << ch;
-    NVIC_ClearPendingIRQ(irq_for(ch));
-    if (s_configured[ch] != 0u) NVIC_EnableIRQ(irq_for(ch));
+    MP_NvicClearPending(irq_for(ch));
+    if (s_configured[ch] != 0u) MP_NvicEnable(irq_for(ch));
     return TIMER_OK;
 }
 
