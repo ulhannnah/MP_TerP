@@ -5,6 +5,7 @@
 #include "app.h"
 #include "adc_channel.h"
 #include "servo.h"
+#include "oled_port_s32k144.h"
 #include "stepper_controller.h"
 #include "ultrasonic_port_s32k144.h"
 #include "timer_manager.h"
@@ -18,6 +19,8 @@ typedef struct {
     StepperControllerConfig stepper;
     UltrasonicPortConfig ultrasonic;
     ADCChannelConfig adc;
+    OLEDPortConfig oled_port;
+    uint8_t custom_oled_port; /* 0 keeps existing default mapping */
     AppConfig application;
     bool (*lcd_write)(void *user,uint8_t row,const char *line);
     void (*led_write)(void *user,bool on);
