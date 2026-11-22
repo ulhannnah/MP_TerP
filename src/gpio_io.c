@@ -1,5 +1,31 @@
 #include "gpio_io.h"
 #include <stddef.h>
+
+/* Minimal Cortex-M PRIMASK critical section. S32K SDK variants do not
+ * necessarily expose CMSIS __get_PRIMASK/__disable_irq/__enable_irq.
+ * Restore the exact previous interrupt masking state on exit.
+ */
+static uint32_t gpio_enter_critical(void)
+{
+#if defined(__arm__) || defined(__thumb__)
+    uint32_t primask;
+    __asm volatile ("mrs %0, primask\n\tcpsid i"
+                    : "=r"(primask) :: "memory");
+    return primask;
+#else
+    return 0u;
+#endif
+}
+
+static void gpio_exit_critical(uint32_t primask)
+{
+#if defined(__arm__) || defined(__thumb__)
+    __asm volatile ("msr primask, %0" :: "r"(primask) : "memory");
+#else
+    (void)primask;
+#endif
+}
+
 static bool valid_pin(PORT_Type *p,GPIO_Type *g,uint8_t pin){
     return p!=NULL&&g!=NULL&&pin<32u;
 }
@@ -48,9 +74,8 @@ void GpioButton_OnPortIrq(GpioButton *btn){
 bool GpioButton_TakePress(GpioButton *btn){
     bool pressed;
     if(!btn||!btn->initialized)return false;
-    uint32_t primask=__get_PRIMASK();
-    __disable_irq();
+    uint32_t primask=gpio_enter_critical();
     pressed=(btn->pending!=0u);btn->pending=0u;
-    if((primask&1u)==0u)__enable_irq();
+    gpio_exit_critical(primask);
     return pressed;
 }
