@@ -96,19 +96,22 @@ bash tests/run_stepper_tests.sh
 bash tests/run_servo_tests.sh
 bash tests/run_pipeline_tests.sh
 bash tests/run_integration_tests.sh
+bash tests/run_math_tests.sh
 ```
 
 GitHub Actions는 **수동 실행 전용**이다. 추가된 5번째 통합 테스트 스크립트는 이번 작성 시점에 실제 GCC 실행을 확인하지 못했으므로 결과를 PASS로 표기하지 않는다.
 
 ## 8. 알려진 미완성·실기기 의존 사항
 
-- 실제 Text LCD의 전송 방식은 미확정. `LcdStatus`는 16x2 텍스트 생성·변경분 갱신까지 담당하고, 실제 HD44780 4-bit 병렬/LPI2C 백팩 등 전송은 `lcd_write`에서 구현 필요
+- 실제 Text LCD의 전송 방식은 미확정. `LcdStatus`는 16x2 텍스트 생성·변경분 갱신까지 담당. `lcd_hd44780.c/.h`는 선택형 GPIO 기반 HD44780 4-bit 병렬 LCD 드라이버이며, I2C 백팩 등 다른 LCD는 별도 `lcd_write` 콜백 필요
 - `ADCChannel`에서 ADC 채널에 대응하는 핀의 아날로그 MUX 설정과 보드 Vref 확인 필요
 - S32DS에서 FTM 매크로, PORT IRQ 벡터, `DWT` 레지스터 및 NVIC 설정 검증 필요
 - FTM 입력 캡처와 메인 루프의 `Ultrasonic` 상태 공유 시 경쟁 조건·인터럽트 타이밍 검증 필요
 - 배경 자동 보정은 간단한 1회 스냅샷으로, 대상 존재 시 잘못 학습할 수 있음
 - 현재 Tracker는 각도/거리 기반 매칭. 표적 교차/가림 및 속도 모델이 추가되어야 정확한 다중 표적 성능 평가 가능
-- DSP 최적화 FIR, eDMA 표시 전송, WDOG 복구는 선택적 성능 고도화로 남겨둠
+- `dsp_fir.c` Q15 FIR은 일반 C와 2개씩 묶은 연산을 제공. ARM `__SMLALD` 경로는 `MP_TERP_ENABLE_ARM_DSP_INTRINSICS` 정의 시에만 사용하며, 정확도/속도 보드 비교는 미완료
+- `coordinate_math.c` FPU 좌표·속도·예측, `cycle_profiler.c` Cortex-M4 DWT 계측 도구가 추가되었음. 실제 MCU 측정값은 아직 없음
+- eDMA 표시 전송, WDOG 복구는 선택적 성능 고도화로 남겨둠
 
 ## 9. 보드 최초 검증 순서
 
@@ -122,3 +125,16 @@ GitHub Actions는 **수동 실행 전용**이다. 추가된 5번째 통합 테�
 8. DWT로 지터·CPU 점유율 및 필터 최적화 비교
 
 실제 장비 없이 GPIO Echo 5V 출력을 S32K144에 바로 연결하지 말 것. **센서 모델의 출력 전압과 MCU 핀 절대 최대 정격**을 먼저 확인할 것.
+
+## 10. 선택형 LCD 연결
+
+HD44780 호환 LCD의 D4~D7, RS, Enable은 `LCDHD44780Config`에서 GPIO 포트/핀을 각각 선택한다. RW는 **GND에 연결**한다. `LCDHD44780_Init()`에 전달하는 `delay_us`는 실제 최소 수 µs 및 40ms 시작 지연을 보장해야 한다. 인스턴스를 초기화한 뒤 `BoardSystemConfig.lcd_write = LCDHD44780_WriteLine`과 `user = &lcd_instance`로 설정할 수 있지만, 동일 `user` 포인터를 LED 사용자 콜백과 공유하므로 자체 래퍼가 필요할 수 있다.
+
+**일반적인 I2C LCD 백팩은 이 4비트 GPIO 드라이버와 호환되지 않는다.** 별도 전송 콜백을 구현해야 한다.
+
+## 11. 신규 코드의 검증 등급
+
+- **기존 4종 호스트 테스트**: GitHub Actions 성공 기록 확인
+- **신규 `run_integration_tests.sh`, `run_math_tests.sh`**: 파일 추가 및 검토만 수행. 실제 실행 결과 미확인
+- **신규 MCU 포트**: S32DS 빌드·Pin MUX·IRQ·타이머 카운터·PWM 파형 실측 필요
+- **일부 설정이 확정되지 않아 실제 완전한 보드 실행은 미완료**. 특히 MCU 패키지·연결 회로·LCD 규격을 확인해야 함
