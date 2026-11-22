@@ -1,98 +1,88 @@
 #include "oled_port.h"
+#include "oled_port_s32k144.h"
 #include "device_registers.h"
 
-/* S32K144: LPI2C0 SDA=PTA2 ALT3, SCL=PTA3 ALT3.
- * Requires caller to configure system clocks using clocks_and_modes.
- * Bus source: SPLLDIV2_CLK=40MHz in the tested example.
- * Check pin routing and pull-ups on your particular board.
- */
-#define PORT_I2C_ERRORS (LPI2C_MSR_NDF_MASK  | \
-                         LPI2C_MSR_ALF_MASK  | \
-                         LPI2C_MSR_FEF_MASK  | \
-                         LPI2C_MSR_PLTF_MASK)
+#define PORT_I2C_ERRORS (LPI2C_MSR_NDF_MASK | LPI2C_MSR_ALF_MASK | \
+                         LPI2C_MSR_FEF_MASK | LPI2C_MSR_PLTF_MASK)
 #define PORT_WAIT_LIMIT (1000000u)
 
-void OLED_PortInit(void)
-{
-    PCC->PCCn[PCC_PORTA_INDEX] |= PCC_PCCn_CGC_MASK;
-    PORTA->PCR[2] = PORT_PCR_MUX(3);  /* LPI2C0 SDA */
-    PORTA->PCR[3] = PORT_PCR_MUX(3);  /* LPI2C0 SCL */
+/* Existing wiring preserved as fallback; all parameters may be overridden. */
+static OLEDPortConfig s_config;
+static uint8_t s_has_config;
+static LPI2C_Type *s_bus;
 
-    PCC->PCCn[PCC_LPI2C0_INDEX] &= ~PCC_PCCn_CGC_MASK;
-    PCC->PCCn[PCC_LPI2C0_INDEX] =
-        PCC_PCCn_PCS(6) | PCC_PCCn_CGC_MASK;
-
-    LPI2C0->MCR = LPI2C_MCR_RST_MASK;
-    LPI2C0->MCR = 0u;
-
-    /* Values preserved from the already-functioning user prototype. */
-    LPI2C0->MCFGR1 = LPI2C_MCFGR1_PRESCALE(4);
-    LPI2C0->MCCR0 = LPI2C_MCCR0_CLKLO(14) |
-                     LPI2C_MCCR0_CLKHI(9) |
-                     LPI2C_MCCR0_SETHOLD(8) |
-                     LPI2C_MCCR0_DATAVD(4);
-    LPI2C0->MFCR = LPI2C_MFCR_TXWATER(0);
-    LPI2C0->MCR = LPI2C_MCR_MEN_MASK;
+bool OLED_PortConfigure(const OLEDPortConfig *cfg){
+    if(!cfg||!cfg->bus||!cfg->sda_port||!cfg->scl_port||
+       cfg->sda_pin>=32u||cfg->scl_pin>=32u||
+       cfg->sda_alt<2u||cfg->sda_alt>7u||
+       cfg->scl_alt<2u||cfg->scl_alt>7u||
+       cfg->bus_clock_pcs==0u||cfg->bus_clock_pcs>7u||
+       cfg->prescale>7u||cfg->clock_low==0u||cfg->clock_high==0u)
+        return false;
+    s_config=*cfg;s_has_config=1u;return true;
 }
-
-static int Port_Put(uint16_t value)
-{
-    uint32_t limit;
-    for (limit = 0u; limit < PORT_WAIT_LIMIT; ++limit)
-    {
-        uint32_t msr = LPI2C0->MSR;
-        if ((msr & PORT_I2C_ERRORS) != 0u)
-            return -2;
-        if ((msr & LPI2C_MSR_TDF_MASK) != 0u)
-        {
-            LPI2C0->MTDR = value;
-            return 0;
+void OLED_PortInit(void){
+    OLEDPortConfig cfg;
+    if(s_has_config) cfg=s_config;
+    else {
+        cfg.bus=LPI2C0;cfg.bus_pcc_index=PCC_LPI2C0_INDEX;cfg.bus_clock_pcs=6u;
+        cfg.sda_port=PORTA;cfg.sda_port_pcc_index=PCC_PORTA_INDEX;
+        cfg.sda_pin=2u;cfg.sda_alt=3u;
+        cfg.scl_port=PORTA;cfg.scl_port_pcc_index=PCC_PORTA_INDEX;
+        cfg.scl_pin=3u;cfg.scl_alt=3u;
+        cfg.prescale=4u;cfg.clock_low=14u;cfg.clock_high=9u;
+        cfg.set_hold=8u;cfg.data_valid=4u;
+    }
+    s_bus=cfg.bus;
+    PCC->PCCn[cfg.sda_port_pcc_index] |= PCC_PCCn_CGC_MASK;
+    PCC->PCCn[cfg.scl_port_pcc_index] |= PCC_PCCn_CGC_MASK;
+    cfg.sda_port->PCR[cfg.sda_pin]=PORT_PCR_MUX(cfg.sda_alt);
+    cfg.scl_port->PCR[cfg.scl_pin]=PORT_PCR_MUX(cfg.scl_alt);
+    PCC->PCCn[cfg.bus_pcc_index]&=~PCC_PCCn_CGC_MASK;
+    PCC->PCCn[cfg.bus_pcc_index]=(PCC->PCCn[cfg.bus_pcc_index]&~PCC_PCCn_PCS_MASK)|
+                                  PCC_PCCn_PCS(cfg.bus_clock_pcs)|PCC_PCCn_CGC_MASK;
+    s_bus->MCR=LPI2C_MCR_RST_MASK;
+    s_bus->MCR=0u;
+    s_bus->MCFGR1=LPI2C_MCFGR1_PRESCALE(cfg.prescale);
+    s_bus->MCCR0=LPI2C_MCCR0_CLKLO(cfg.clock_low) |
+                  LPI2C_MCCR0_CLKHI(cfg.clock_high) |
+                  LPI2C_MCCR0_SETHOLD(cfg.set_hold) |
+                  LPI2C_MCCR0_DATAVD(cfg.data_valid);
+    s_bus->MFCR=LPI2C_MFCR_TXWATER(0);
+    s_bus->MCR=LPI2C_MCR_MEN_MASK;
+}
+static int port_put(uint16_t value){
+    if(!s_bus)return -5;
+    for(uint32_t limit=0u;limit<PORT_WAIT_LIMIT;limit++){
+        uint32_t msr=s_bus->MSR;
+        if((msr&PORT_I2C_ERRORS)!=0u)return -2;
+        if((msr&LPI2C_MSR_TDF_MASK)!=0u){
+            s_bus->MTDR=value;return 0;
         }
     }
     return -1;
 }
-
-int OLED_PortWrite(uint8_t address7, uint8_t control,
-                   const uint8_t *data, uint16_t len)
-{
-    uint16_t i;
-    uint32_t limit;
+int OLED_PortWrite(uint8_t address7,uint8_t control,
+                   const uint8_t *data,uint16_t len){
     int result;
-
-    if ((data == 0) && (len != 0u))
-        return -4;
-    if (address7 > 0x7Fu)
-        return -4;
-
-    /* Status flags are write-one-to-clear. */
-    LPI2C0->MSR = LPI2C_MSR_SDF_MASK | PORT_I2C_ERRORS;
-
-    /* START + 7-bit address + write bit. */
-    result = Port_Put(LPI2C_MTDR_CMD(4) |
-                      LPI2C_MTDR_DATA((uint32_t)address7 << 1));
-    if (result != 0) return result;
-
-    result = Port_Put(LPI2C_MTDR_CMD(0) | LPI2C_MTDR_DATA(control));
-    if (result != 0) return result;
-
-    for (i = 0u; i < len; ++i)
-    {
-        result = Port_Put(LPI2C_MTDR_CMD(0) | LPI2C_MTDR_DATA(data[i]));
-        if (result != 0) return result;
+    if(!s_bus)return -5;
+    if((data==0&&len!=0u)||address7>0x7fu)return -4;
+    s_bus->MSR=LPI2C_MSR_SDF_MASK|PORT_I2C_ERRORS;
+    result=port_put(LPI2C_MTDR_CMD(4)|LPI2C_MTDR_DATA((uint32_t)address7<<1));
+    if(result)return result;
+    result=port_put(LPI2C_MTDR_CMD(0)|LPI2C_MTDR_DATA(control));
+    if(result)return result;
+    for(uint16_t i=0u;i<len;i++){
+        result=port_put(LPI2C_MTDR_CMD(0)|LPI2C_MTDR_DATA(data[i]));
+        if(result)return result;
     }
-
-    result = Port_Put(LPI2C_MTDR_CMD(2)); /* STOP */
-    if (result != 0) return result;
-
-    for (limit = 0u; limit < PORT_WAIT_LIMIT; ++limit)
-    {
-        uint32_t msr = LPI2C0->MSR;
-        if ((msr & PORT_I2C_ERRORS) != 0u)
-            return -2;
-        if ((msr & LPI2C_MSR_SDF_MASK) != 0u)
-        {
-            LPI2C0->MSR = LPI2C_MSR_SDF_MASK;
-            return 0;
+    result=port_put(LPI2C_MTDR_CMD(2));
+    if(result)return result;
+    for(uint32_t limit=0u;limit<PORT_WAIT_LIMIT;limit++){
+        uint32_t msr=s_bus->MSR;
+        if((msr&PORT_I2C_ERRORS)!=0u)return -2;
+        if((msr&LPI2C_MSR_SDF_MASK)!=0u){
+            s_bus->MSR=LPI2C_MSR_SDF_MASK;return 0;
         }
     }
     return -3;
