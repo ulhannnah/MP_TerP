@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "app.h"
 #include "adc_channel.h"
+#include "gpio_io.h"
 #include "servo.h"
 #include "oled_port_s32k144.h"
 #include "stepper_controller.h"
@@ -24,6 +25,10 @@ typedef struct {
     AppConfig application;
     bool (*lcd_write)(void *user,uint8_t row,const char *line);
     void (*led_write)(void *user,bool on);
+    uint8_t use_gpio_led;
+    GpioOutputConfig led_gpio;
+    uint8_t use_gpio_button;
+    GpioButtonConfig button_gpio;
     void *user;
 } BoardSystemConfig;
 
@@ -33,6 +38,8 @@ typedef struct {
     StepperController stepper;
     UltrasonicPort ultrasonic;
     ADCChannel adc;
+    GpioOutput led;
+    GpioButton button;
     App app;
     BoardSystemConfig config;
     uint8_t adc_pending;
@@ -47,4 +54,5 @@ void BoardSystem_Update(BoardSystem *board);
 /* Connect selected FTM channel pair's IRQ to this hook. */
 void BoardSystem_OnEchoCaptureIrq(BoardSystem *board);
 void BoardSystem_OnFireButton(BoardSystem *board);
+void BoardSystem_OnFireButtonPortIrq(BoardSystem *board);
 #endif
