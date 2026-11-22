@@ -10,6 +10,7 @@ bool RadarProcessing_Init(RadarProcessing *p,int32_t min,int32_t max,int32_t ste
        !TargetTracker_Init(&p->tracker,ma,mr,lost_ms,misses))return false;
     for(uint16_t i=0;i<p->frame.bins;i++)
         if(!DistanceFilter_Init(&p->filters[i],window))return false;
+    p->display_frame=p->frame;
     p->candidate_count=0u;p->background_ready=0u;p->calibrating=0u;return true;
 }
 void RadarProcessing_RequestCalibration(RadarProcessing *p) {
@@ -23,6 +24,7 @@ bool RadarProcessing_PushSample(RadarProcessing *p,const RadarSample *s) {
 }
 void RadarProcessing_ProcessCompleted(RadarProcessing *p,uint32_t now) {
     if(!p||!RadarFrame_TakeCompleted(&p->frame))return;
+    p->display_frame=p->frame;
     TargetDetector_Clear(&p->detector);
     for(uint16_t i=0;i<p->frame.bins;i++) {
         RadarSample s;uint32_t filtered;bool foreground=false;
