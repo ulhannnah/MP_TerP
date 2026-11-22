@@ -43,12 +43,13 @@ static bool lcd_write(void *ctx,uint8_t row,const char *line){
 }
 static void led_write(void *ctx,bool on){
     BoardSystem *b=(BoardSystem *)ctx;
-    b->config.led_write(b->config.user,on);
+    if(b->config.use_gpio_led) GpioOutput_Write(&b->led,on);
+    else if(b->config.led_write)b->config.led_write(b->config.user,on);
 }
 bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
     AppConfig app;
     StepperControllerConfig stepper;
-    if(!b||!cfg||!cfg->led_write||!cfg->stepper_delay||
+    if(!b||!cfg||(!cfg->led_write&&!cfg->use_gpio_led)||!cfg->stepper_delay||
        cfg->timer.tick_channel==TIMER_CHANNEL_NONE||
        cfg->servo.ftm==cfg->ultrasonic.ftm||
        cfg->stepper.timer_channel==cfg->ultrasonic.trigger_timer_channel||
@@ -61,6 +62,8 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
     NormalRUNmode_80MHz();
     if(TimerManager_Init(&cfg->timer)!=TIMER_OK)return false;
     if(!ADCChannel_Init(&b->adc,&cfg->adc))return false;
+    if(cfg->use_gpio_led && !GpioOutput_Init(&b->led,&cfg->led_gpio))return false;
+    if(cfg->use_gpio_button && !GpioButton_Init(&b->button,&cfg->button_gpio))return false;
     if(StepMotor_Init(&b->step_motor,cfg->stepper_pins,cfg->stepper_delay)!=0)return false;
     StepMotor_SetMode(&b->step_motor,cfg->stepper_mode);
     stepper=cfg->stepper;stepper.motor=&b->step_motor;
@@ -89,6 +92,8 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
 }
 void BoardSystem_Update(BoardSystem *b){
     if(!b||!b->initialized)return;
+    if(b->config.use_gpio_button && GpioButton_TakePress(&b->button))
+        App_RequestFire(&b->app,TimerManager_GetTickMs());
     App_Update(&b->app,TimerManager_GetTickMs());
 }
 void BoardSystem_OnEchoCaptureIrq(BoardSystem *b){
@@ -96,4 +101,9 @@ void BoardSystem_OnEchoCaptureIrq(BoardSystem *b){
 }
 void BoardSystem_OnFireButton(BoardSystem *b){
     if(b&&b->initialized)App_RequestFire(&b->app,TimerManager_GetTickMs());
+}
+
+void BoardSystem_OnFireButtonPortIrq(BoardSystem *b){
+    if(b&&b->initialized&&b->config.use_gpio_button)
+        GpioButton_OnPortIrq(&b->button);
 }
