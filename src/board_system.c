@@ -69,6 +69,7 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
      * the reference, then call StepperController_SetHome() explicitly. */
     if(Servo_Init(&b->servo,&cfg->servo)!=SERVO_OK)return false;
     if(!UltrasonicPort_Init(&b->ultrasonic,&cfg->ultrasonic))return false;
+    if(cfg->custom_oled_port && !OLED_PortConfigure(&cfg->oled_port))return false;
     if(OLED_Init()!=0)return false;
     app=cfg->application;
     app.hw.context=b;
