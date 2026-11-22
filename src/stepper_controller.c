@@ -1,19 +1,17 @@
 #include "stepper_controller.h"
-#include "device_registers.h"
+#include "mp_irq_compat.h"
 #include <stddef.h>
 
 #define MILLIDEGREES_PER_REVOLUTION 360000LL
 
 static uint32_t lock_irqs(void)
 {
-    uint32_t mask = __get_PRIMASK();
-    __disable_irq();
-    return mask;
+    return MP_IrqSave();
 }
 
 static void unlock_irqs(uint32_t mask)
 {
-    if ((mask & 1u) == 0u) __enable_irq();
+    MP_IrqRestore(mask);
 }
 
 /* Conversion occurs in foreground only; the timer ISR uses integer steps. */
