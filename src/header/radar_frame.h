@@ -12,6 +12,7 @@ typedef struct {
     uint32_t frame_number;
     uint8_t complete;
     int32_t first_angle_mdeg;
+    int32_t last_angle_mdeg;
     int32_t step_mdeg;
     int8_t direction;
 } RadarFrame;
