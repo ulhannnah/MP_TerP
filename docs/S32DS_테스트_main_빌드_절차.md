@@ -46,3 +46,8 @@
 - `BoardSystem_Init()` 호출은 실제 핀/채널/전원 안전성이 확인된 다음 단계에서 활성화합니다.
 - 오류가 나면 **Build Console의 첫 번째 error 및 해당 파일/라인**을 알려주시면 SDK 설정에 맞게 수정할 수 있습니다.
 - `main_example.c`는 전 기능 가동용 예시이며, 빌드 테스트와 혼동하지 않도록 기본 비활성 상태로 유지합니다.
+
+
+## 2026-11-23 수학 라이브러리 링크 대응
+
+`coordinate_math.c`와 `radar_renderer.c`의 `cosf/sinf` 호출을 `mp_trig.c`로 대체했습니다. 반드시 `src/mp_trig.c`와 `src/header/mp_trig.h`를 함께 프로젝트에 추가하고 `Project > Clean` 후 재빌드하세요. 새로운 삼각함수는 소프트웨어 근사이므로 실제 MCU의 계산 정확도/시간은 추후 검증 대상입니다.
