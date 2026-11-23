@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "dsp_fir.h"
 #include "coordinate_math.h"
+#include "mp_trig.h"
 int main(void){
     const int16_t coeff[]={8192,8192,8192,8192};
     DSPFIR ref,opt;
@@ -21,6 +22,15 @@ int main(void){
     assert(Coordinate_CalculateVelocity(&p,&q,1000u,&v));
     assert(Coordinate_Predict(&p,&v,1000u,&r));
     assert(r.y_mm>999.9f&&r.x_mm<0.1f);
+    float sine, cosine;
+    assert(MP_TrigSinCosMdeg(0,&sine,&cosine));
+    assert(sine>-0.0001f&&sine<0.0001f&&cosine>0.9999f);
+    assert(MP_TrigSinCosMdeg(90000,&sine,&cosine));
+    assert(sine>0.9999f&&cosine>-0.0001f&&cosine<0.0001f);
+    assert(MP_TrigSinCosMdeg(180000,&sine,&cosine));
+    assert(sine>-0.0001f&&sine<0.0001f&&cosine<-0.9999f);
+    assert(MP_TrigSinCosMdeg(-90000,&sine,&cosine));
+    assert(sine<-0.9999f);
     puts("PASS: FIR Q15 reference/paired equivalence, FPU coordinate math");
     return 0;
 }
