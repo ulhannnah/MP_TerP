@@ -1,17 +1,18 @@
 #include "radar_renderer.h"
 #include "oled.h"
-#include <math.h>
+#include "mp_trig.h"
 #include <stddef.h>
-#define RADAR_PI 3.14159265358979323846f
 static int16_t map_x(const RadarRendererConfig *cfg,int32_t angle,uint32_t distance) {
-    float radians=(float)angle*(RADAR_PI/180000.0f);
+    float sine, cosine;
     float rr=(float)cfg->radius*(float)distance/(float)cfg->maximum_distance_mm;
-    return (int16_t)((float)cfg->center_x+rr*cosf(radians)+0.5f);
+    (void)MP_TrigSinCosMdeg(angle,&sine,&cosine);
+    return (int16_t)((float)cfg->center_x+rr*cosine+0.5f);
 }
 static int16_t map_y(const RadarRendererConfig *cfg,int32_t angle,uint32_t distance) {
-    float radians=(float)angle*(RADAR_PI/180000.0f);
+    float sine, cosine;
     float rr=(float)cfg->radius*(float)distance/(float)cfg->maximum_distance_mm;
-    return (int16_t)((float)cfg->center_y-rr*sinf(radians)+0.5f);
+    (void)MP_TrigSinCosMdeg(angle,&sine,&cosine);
+    return (int16_t)((float)cfg->center_y-rr*sine+0.5f);
 }
 bool RadarRenderer_Draw(const RadarRendererConfig *cfg,const RadarFrame *frame,
                         const TargetTracker *tracker,uint8_t selected,int32_t angle) {
