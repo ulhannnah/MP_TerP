@@ -1,12 +1,14 @@
 #include "coordinate_math.h"
+#include "mp_trig.h"
 #include <math.h>
 #include <stddef.h>
-#define PI_OVER_180000 (3.14159265358979323846f/180000.0f)
+
 bool Coordinate_PolarToCartesian(int32_t angle,float distance,Coordinate2D *out){
+    float sine, cosine;
     if(!out||!isfinite(distance)||distance<0.0f)return false;
-    float radians=(float)angle*PI_OVER_180000;
-    out->x_mm=distance*cosf(radians);
-    out->y_mm=distance*sinf(radians);
+    if(!MP_TrigSinCosMdeg(angle,&sine,&cosine))return false;
+    out->x_mm=distance*cosine;
+    out->y_mm=distance*sine;
     return true;
 }
 bool Coordinate_CalculateVelocity(const Coordinate2D *previous,const Coordinate2D *current,
