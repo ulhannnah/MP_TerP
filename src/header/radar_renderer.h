@@ -11,6 +11,7 @@ typedef struct {
     uint8_t center_x;
     uint8_t center_y;
     uint8_t radius;
+    uint8_t visible_target_limit; /* 0: legacy show all five */
 } RadarRendererConfig;
 bool RadarRenderer_Draw(const RadarRendererConfig *cfg,
                         const RadarFrame *frame,
