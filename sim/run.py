@@ -13,7 +13,7 @@ from pathlib import Path
 from native import RadarNative
 from world import World
 
-SCENARIOS = ("static", "moving", "occlusion", "crossing", "empty")
+SCENARIOS = ("static", "moving", "occlusion", "crossing", "five", "empty")
 
 
 def save_csv(path: Path, rows: list[dict], columns: list[str]):
