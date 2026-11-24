@@ -252,12 +252,6 @@ int main(void)
         g_stage_frames=s_app.processing.display_frame.frame_number;
         g_stage_candidates=s_app.processing.candidate_count;
         g_stage_selected_id=TargetSelector_GetId(&s_app.selector);
-        for(uint8_t i=0u;i<s_app.processing.tracker.active_limit;i++) {
-            RadarTarget *t=&s_app.processing.tracker.targets[i];
-            if(t->state==TARGET_NEW||t->state==TARGET_TRACKING)
-                ++g_stage_active_tracks;
-        }
-        /* Reset and recount active tracks in each iteration. */
         g_stage_active_tracks=0u;
         for(uint8_t i=0u;i<s_app.processing.tracker.active_limit;i++) {
             const RadarTarget *t=&s_app.processing.tracker.targets[i];
