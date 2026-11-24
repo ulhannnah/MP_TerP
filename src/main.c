@@ -1,3 +1,7 @@
+/* Default main remains the no-peripheral smoke test.
+ * Set MP_TERP_STAGE_MAIN to use main_stage.c instead (never both mains).
+ */
+#if !defined(MP_TERP_STAGE_MAIN)
 /*
  * MP_TerP / S32K144 SDK compile-and-link smoke test.
  *
@@ -114,3 +118,5 @@ int main(void)
         __asm volatile ("nop");
     }
 }
+
+#endif /* !MP_TERP_STAGE_MAIN */
