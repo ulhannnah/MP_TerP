@@ -17,7 +17,7 @@ S32K144(Cortex-M4F) 기반으로 서보 초음파 왕복 스캔, 배경 차분, 
 
 ## 먼저 읽을 문서
 
-- [S32DS 통합 및 검증 가이드](docs/S32DS_통합_및_검증_가이드.md)
+- [S32K144 핀 배치 및 단계별 실행·독립 센서 벤치](docs/20261124_S32K144_핀배치_단계별_실행_독립센서_벤치.md) — **내일 보드 시험 전 먼저 확인**\n- [S32DS 통합 및 검증 가이드](docs/S32DS_통합_및_검증_가이드.md)
 - [레이더 처리 파이프라인 설명](docs/레이더_파이프라인_구현현황.md)
 - [기능별 상세 명세](docs/세부 명세서.md)
 
@@ -58,3 +58,4 @@ python sim/selftest.py
 7. 보드에서 PWM·Echo·I2C·ADC·모터·LCD 동작 순차 검증
 
 **주의:** 현재는 MCU용 전체 S32DS 빌드, 보드 실기기 검증, Pin MUX 확정, 전력/실행 성능 측정이 완료되지 않았습니다. `main_example.c`는 `MP_TERP_USE_EXAMPLE_MAIN`을 정의했을 때만 `main`을 제공하며 사용자 보드 설정 함수가 필요합니다. 실제 발사체나 고전력 장치를 제어하지 않습니다.
+\n## 보드 단계별 실행 메인 (2026-11-24)\n\n기존 `src/main.c`는 주변장치를 건드리지 않는 기본 Smoke Test로 유지한다. `src/main_stage.c`는 `MP_TERP_STAGE_MAIN` 및 `MP_TERP_STAGE=1..5` 심볼로 선택할 수 있다. Stage 1=Tick, Stage 2=Servo, Stage 3=고정 초음파, Stage 4=가상 Echo+실제 C App, Stage 5=전체 보드 연동(실제 각도 결합 확인 필요). 실물 핀맵 확인 전에는 `src/board_config_user_template.c`가 초기화 실패로 안전하게 차단한다.\n\n**중요:** 현재 초음파 센서와 서보가 따로 고정되어 있으므로 서보 각도를 초음파 관측 방향으로 사용하면 안 된다. 실제 센서 방향을 확인하지 않은 상태에서 Stage 5를 활성화하지 않는다.\n
