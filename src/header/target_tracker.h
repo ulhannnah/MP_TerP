@@ -19,8 +19,11 @@ typedef struct {
     uint32_t max_range_delta_mm;
     uint32_t lost_timeout_ms;
     uint8_t max_misses;
+    uint8_t active_limit; /* configured simultaneous ID slots (1..5) */
 } TargetTracker;
 bool TargetTracker_Init(TargetTracker *t,int32_t max_angle_delta_mdeg,uint32_t max_range_delta_mm,uint32_t lost_timeout_ms,uint8_t max_misses);
+/* Limiting to 3 leaves five-slot storage intact. Must call before tracking starts. */
+bool TargetTracker_SetLimit(TargetTracker *t,uint8_t active_limit);
 /* Call once per completed sweep; greedily associates candidates; unmatched become LOST. */
 void TargetTracker_Update(TargetTracker *t,const TargetCandidate *c,uint16_t n,uint32_t now_ms);
 bool TargetTracker_Get(const TargetTracker *t,uint8_t id,RadarTarget *out);
