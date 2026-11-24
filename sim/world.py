@@ -35,7 +35,9 @@ class World:
         if sweep == 0 or self.scenario == "empty":
             return []
         phase = sweep - 1
-        if self.scenario == "five":\n            return [Object(f"T{i+1}", a, 1500, 185) for i, a in enumerate((40, 63, 86, 109, 135))]\n        if self.scenario == "static":
+        if self.scenario == "five":
+            return [Object(f"T{i+1}", a, 1500, 185) for i, a in enumerate((40, 63, 86, 109, 135))]
+        if self.scenario == "static":
             return [Object("A", 65, 1450), Object("B", 110, 2000)]
         if self.scenario == "moving":
             return [Object("A", min(70 + phase * 2.0, 100), 1500 + phase * 20),
