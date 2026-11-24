@@ -34,6 +34,19 @@ bash tests/run_math_tests.sh
 
 이 테스트 중 **기존 4종**은 과거 GitHub Actions 성공 기록이 있지만, 이후 추가된 **통합·수치 연산 테스트 2종은 작성 후 미실행**입니다. GitHub Actions는 메일 알림 방지를 위해 **수동 실행 전용**으로 유지합니다.
 
+
+## Python + 원본 C 레이더 시뮬레이션 (보드 불필요)
+
+Python이 가상 센서와 이동 표적을 만들고, **실제 C Scan/Processing/Tracker 소스를 호스트 GCC 공유 라이브러리로 컴파일**해서 실행합니다. S32DS ARM 컴파일러가 아닌 PC용 `gcc`가 필요합니다.
+
+```bash
+python sim/run.py --scenario static --sweeps 12
+python sim/run.py --scenario moving --sweeps 16 --plot
+python sim/selftest.py
+```
+
+`--plot`은 `python -m pip install -r sim/requirements.txt`로 matplotlib 설치 후 사용합니다. `sim/results/`에 CSV·JSON·PNG 결과가 저장됩니다. [시나리오·WSL 환경·검증 범위 상세](sim/README.md)
+
 ## S32DS에서 필요한 작업
 
 1. 실제 S32K144/실습 확장 보드의 MCU 패키지·Pin MUX·전압·LCD 규격 확인
