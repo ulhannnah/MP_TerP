@@ -3,7 +3,8 @@
 bool TargetTracker_Init(TargetTracker *t,int32_t max_angle,uint32_t max_range,uint32_t timeout,uint8_t misses){
     if(!t||max_angle<=0||max_range==0u||timeout==0u||misses==0u)return false;
     t->max_angle_delta_mdeg=max_angle;t->max_range_delta_mm=max_range;
-    t->lost_timeout_ms=timeout;t->max_misses=misses;\n    t->active_limit=TRACKER_MAX_TARGETS;
+    t->lost_timeout_ms=timeout;t->max_misses=misses;
+    t->active_limit=TRACKER_MAX_TARGETS;
     for(uint8_t i=0;i<TRACKER_MAX_TARGETS;i++) {
         t->targets[i].id=(uint8_t)(i+1u);
         t->targets[i].state=TARGET_EMPTY;t->targets[i].miss_count=0;
@@ -25,7 +26,8 @@ static uint32_t abs_angle(int32_t a,int32_t b){
 static uint32_t abs_range(uint32_t a,uint32_t b){return a>b?a-b:b-a;}
 void TargetTracker_Update(TargetTracker *t,const TargetCandidate *c,uint16_t n,uint32_t now){
     uint8_t matched[TRACKER_MAX_TARGETS]={0};
-    if(!t||t->active_limit==0u||t->active_limit>TRACKER_MAX_TARGETS||\n       (n!=0u&&!c))return;
+    if(!t||t->active_limit==0u||t->active_limit>TRACKER_MAX_TARGETS||
+       (n!=0u&&!c))return;
     /* Explicit slot expiry: expired LOST tracks are reusable for new IDs. */
     for(uint8_t j=0;j<t->active_limit;j++) {
         RadarTarget *p=&t->targets[j];
@@ -68,7 +70,8 @@ void TargetTracker_Update(TargetTracker *t,const TargetCandidate *c,uint16_t n,u
     }
 }
 bool TargetTracker_Get(const TargetTracker *t,uint8_t id,RadarTarget *out){
-    if(!t||!out||id==0u||id>t->active_limit||\n       t->active_limit>TRACKER_MAX_TARGETS)return false;
+    if(!t||!out||id==0u||id>t->active_limit||
+       t->active_limit>TRACKER_MAX_TARGETS)return false;
     *out=t->targets[id-1u];
     return out->state!=TARGET_EMPTY;
 }
