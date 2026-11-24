@@ -32,14 +32,18 @@ bool App_Init(App *app,const AppConfig *cfg,uint32_t now){
     AimControllerConfig ac;
     LcdStatusConfig lc;
     LauncherConfig launcher;
+    uint8_t operating_limit;
     if(!app||!cfg||!cfg->hw.servo_set_angle||!cfg->hw.echo_start||
        !cfg->hw.echo_take||!cfg->hw.aim_move||!cfg->hw.adc_read||
        !cfg->hw.aim_position||!cfg->hw.led_write||
        cfg->oled_period_ms==0u||cfg->lcd_period_ms==0u||
        cfg->aim_tolerance_mdeg<0||cfg->maximum_display_distance_mm==0u)
         return false;
+    operating_limit = cfg->operating_target_limit == 0u ? 3u : cfg->operating_target_limit;
+    if(operating_limit > TRACKER_MAX_TARGETS)return false;
     app->initialized=0u;
     app->config=*cfg;
+    app->config.operating_target_limit=operating_limit;
     sc.min_angle_mdeg=cfg->minimum_scan_angle_mdeg;
     sc.max_angle_mdeg=cfg->maximum_scan_angle_mdeg;
     sc.step_mdeg=cfg->scan_step_mdeg;sc.settle_ms=cfg->settle_ms;
@@ -51,7 +55,9 @@ bool App_Init(App *app,const AppConfig *cfg,uint32_t now){
           cfg->average_window,cfg->background_threshold_mm,&cfg->detector,
           cfg->match_angle_mdeg,cfg->match_range_mm,cfg->lost_timeout_ms,
           cfg->max_misses)||
-       !TargetSelector_Init(&app->selector,cfg->adc_max,cfg->adc_hysteresis))return false;
+       !TargetTracker_SetLimit(&app->processing.tracker,operating_limit)||
+       !TargetSelector_InitWithLimit(&app->selector,cfg->adc_max,
+                                     cfg->adc_hysteresis,operating_limit))return false;
     ac.move=aim_cb;ac.context=app;ac.max_target_age_ms=cfg->aim_max_age_ms;
     ac.minimum_angle_mdeg=cfg->minimum_scan_angle_mdeg;
     ac.maximum_angle_mdeg=cfg->maximum_scan_angle_mdeg;
@@ -59,6 +65,7 @@ bool App_Init(App *app,const AppConfig *cfg,uint32_t now){
     app->renderer.min_angle_mdeg=cfg->minimum_scan_angle_mdeg;
     app->renderer.max_angle_mdeg=cfg->maximum_scan_angle_mdeg;
     app->renderer.maximum_distance_mm=cfg->maximum_display_distance_mm;
+    app->renderer.visible_target_limit=operating_limit;
     app->renderer.center_x=64u;app->renderer.center_y=62u;app->renderer.radius=58u;
     if(cfg->hw.lcd_write) {
         lc.write_line=lcd_cb;lc.context=app;lc.columns=16u;lc.rows=2u;
