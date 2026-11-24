@@ -100,3 +100,42 @@ python sim/selftest.py
 - C11/GCC: 실제 C 레이더 모듈 컴파일
 - 선택 항목: `matplotlib` (PNG 그래프)
 - 결과 데이터: 재현 가능한 seed(`--seed`) 및 CSV
+
+## 6. 추적 정확도 정량 평가 (2026-11-24 추가)
+
+**먼저 시뮬레이션 결과를 생성한 뒤** 실제 C Tracker 출력과 Python 정답 위치를 비교한다:
+
+```powershell
+# 현재 저장된 static 결과 평가
+python sim/evaluate.py sim/results/static
+
+# 이동/교차/다섯 표적 실행 및 정량 평가
+python sim/run.py --scenario crossing --sweeps 18
+python sim/evaluate.py sim/results/crossing
+python sim/run.py --scenario five --sweeps 12
+python sim/evaluate.py sim/results/five
+
+# 평가기 단독 정합성 테스트
+python sim/test_evaluate.py
+
+# 잡음/누락률/시드 조합 일괄 벤치마크 (빠른 테스트)
+python sim/benchmark.py --scenario moving crossing --seeds 11 42 --noise 0 40 --dropout 0 0.08 --sweeps 16
+```
+
+마지막 명령은 총 16개 런을 실행해 `sim/results/matrix/matrix.csv`에 통합한다. 기본 전체 매트릭스 설정은 더 많은 테스트를 실행한다.
+
+결과: 각 시나리오의 `metrics.json`, `associations.csv`, `sweep_metrics.csv`. 벤치마크 집계는 `matrix.csv`.
+
+- **TP/FP/FN, Precision/Recall/F1**: 한 편도 스캔마다 정답 표적과 C 추적 결과를 각도·거리 기준으로 일대일 대응시켜 계산한다.
+- **Angle MAE**: 대응된 표적의 절대 각도 오차 평균. 기본 매칭 각도 게이트 12°.
+- **Approx. Center Range MAE**: C 센서는 표적 앞 표면을 측정하므로, 해당 거리에서 반사체 반지름(기본 230mm, five에서는 185mm)을 더한 *근사 중심거리*와 비교. **실제 물리 정확도나 정밀한 광선-원 교차 보정값은 아니다.**
+- **Consecutive ID switches**: 같은 정답 표적이 **연속 두 편도 스캔에 매칭되었을 때** 트래커 ID가 달라진 횟수.
+- **ID changes after gap**: 검출 누락 또는 가림 등 한 프레임 이상 간격 후 재매칭하면서 ID가 변경된 횟수. 위 ID switch와 별도로 보고한다.
+- **Empty** 장면에서는 정답 표적이 없으므로 Recall/F1은 정의되지 않을 수 있다. `null`을 정상적으로 보고하며, 거짓 양성(FP) 개수를 본다.
+
+**주의**: 위 수치는 시뮬레이터의 이상적 반사체/잡음 가정에 따른 상대 평가다. 초음파의 실제 지향성, 거리 의존 반사, 시간 지터는 모델에 없으므로 실제 성능을 보장하지 않는다. 매칭 게이트 변경으로 평가 수치가 달라질 수 있으니 조건을 보고서에 항상 기록한다.
+
+## 7. 내일 보드 Bring-up
+
+[2026-11-25 S32K144 보드 투입 체크리스트](../docs/20261125_S32K144_보드_투입_체크리스트.md) 참고.
+초기 진단 메인의 `PASS`를 먼저 확인하고 핀 배치/전압/FTM 자원 분리를 점검한 후 LPIT → GPIO/ADC/디스플레이 → Servo → Echo → Stepper → 전체 Radar App 순으로 확장한다.
