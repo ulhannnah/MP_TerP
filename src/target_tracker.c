@@ -38,7 +38,7 @@ void TargetTracker_Update(TargetTracker *t,const TargetCandidate *c,uint16_t n,u
     for(uint16_t i=0;i<n;i++){
         uint8_t best=TRACKER_MAX_TARGETS;
         uint64_t best_score=UINT64_MAX;
-        for(uint8_t j=0;j<TRACKER_MAX_TARGETS;j++){
+        for(uint8_t j=0;j<t->active_limit;j++){
             RadarTarget *p=&t->targets[j];
             uint32_t da,dr;
             if(matched[j]||p->state==TARGET_EMPTY)continue;
@@ -51,7 +51,7 @@ void TargetTracker_Update(TargetTracker *t,const TargetCandidate *c,uint16_t n,u
             if(score<best_score){best_score=score;best=j;}
         }
         if(best==TRACKER_MAX_TARGETS) {
-            for(uint8_t j=0;j<TRACKER_MAX_TARGETS;j++)
+            for(uint8_t j=0;j<t->active_limit;j++)
                 if(t->targets[j].state==TARGET_EMPTY){best=j;break;}
         }
         if(best==TRACKER_MAX_TARGETS)continue;
@@ -61,7 +61,7 @@ void TargetTracker_Update(TargetTracker *t,const TargetCandidate *c,uint16_t n,u
         p->last_seen_ms=now;p->miss_count=0;p->state=fresh?TARGET_NEW:TARGET_TRACKING;
         matched[best]=1u;
     }
-    for(uint8_t j=0;j<TRACKER_MAX_TARGETS;j++) {
+    for(uint8_t j=0;j<t->active_limit;j++) {
         RadarTarget *p=&t->targets[j];
         if(p->state==TARGET_EMPTY||matched[j])continue;
         if(p->miss_count<UINT8_MAX)++p->miss_count;
