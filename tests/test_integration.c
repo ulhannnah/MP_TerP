@@ -138,12 +138,23 @@ static void test_app(void){
     cfg.aim_max_age_ms=200u;cfg.aim_tolerance_mdeg=2000;
     cfg.simulation_ms=40u;cfg.button_debounce_ms=10u;
     assert(App_Init(&app,&cfg,0u));
+    assert(app.config.operating_target_limit==3u);
+    assert(app.selector.selectable_targets==3u);
+    assert(app.processing.tracker.active_limit==3u);
+    assert(app.renderer.visible_target_limit==3u);
     for(uint32_t ms=0u;ms<300u;ms+=5u)App_Update(&app,ms);
     assert(app.processing.background_ready);
     assert(app.processing.display_frame.frame_number>=1u);
     mock_range=400u;
     for(uint32_t ms=300u;ms<600u;ms+=5u)App_Update(&app,ms);
     assert(app.processing.display_frame.frame_number>=2u);
+    cfg.operating_target_limit=5u;
+    assert(App_Init(&app,&cfg,0u));
+    assert(app.selector.selectable_targets==5u);
+    assert(app.processing.tracker.active_limit==5u);
+    assert(app.renderer.visible_target_limit==5u);
+    cfg.operating_target_limit=6u;
+    assert(!App_Init(&app,&cfg,0u));
 }
 int main(void){
     test_frames();test_processing();test_tasks_outputs();test_app();
