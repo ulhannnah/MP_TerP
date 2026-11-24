@@ -37,6 +37,7 @@ typedef struct {
     uint32_t match_range_mm,lost_timeout_ms;
     uint8_t max_misses;
     uint16_t adc_max,adc_hysteresis;
+    uint8_t operating_target_limit; /* 0: default 3, 1..5: explicit mode */
     uint32_t maximum_display_distance_mm;
     uint32_t oled_period_ms,lcd_period_ms;
     uint32_t aim_max_age_ms,aim_tolerance_mdeg;
