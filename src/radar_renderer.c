@@ -47,7 +47,10 @@ bool RadarRenderer_Draw(const RadarRendererConfig *cfg,const RadarFrame *frame,
                            map_y(cfg,s.angle_mdeg,dist),OLED_WHITE);
         }
     }
-    for(uint8_t id=1;id<=TRACKER_MAX_TARGETS;id++) {
+    uint8_t visible_limit=cfg->visible_target_limit == 0u ?
+                          TRACKER_MAX_TARGETS : cfg->visible_target_limit;
+    if(visible_limit>TRACKER_MAX_TARGETS)return false;
+    for(uint8_t id=1;id<=visible_limit;id++) {
         RadarTarget t;
         if(!TargetTracker_Get(tracker,id,&t)||t.state==TARGET_LOST||
            t.range_mm>cfg->maximum_distance_mm)continue;
