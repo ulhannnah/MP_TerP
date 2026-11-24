@@ -124,7 +124,7 @@ python sim/benchmark.py --scenario moving crossing --seeds 11 42 --noise 0 40 --
 
 마지막 명령은 총 16개 런을 실행해 `sim/results/matrix/matrix.csv`에 통합한다. 기본 전체 매트릭스 설정은 더 많은 테스트를 실행한다.
 
-결과: 각 시나리오의 `metrics.json`, `associations.csv`, `sweep_metrics.csv`. 벤치마크 집계는 `matrix.csv`.
+벤치마크 그래프는 아래 명령으로 생성한다 (matplotlib 필요):\n\n```powershell\npython sim/plot_benchmark.py\n```\n\n`sim/results/matrix/f1_vs_noise.png`, `id_switch_vs_noise.png`가 저장된다.\n\n결과: 각 시나리오의 `metrics.json`, `associations.csv`, `sweep_metrics.csv`. 벤치마크 집계는 `matrix.csv`.
 
 - **TP/FP/FN, Precision/Recall/F1**: 한 편도 스캔마다 정답 표적과 C 추적 결과를 각도·거리 기준으로 일대일 대응시켜 계산한다.
 - **Angle MAE**: 대응된 표적의 절대 각도 오차 평균. 기본 매칭 각도 게이트 12°.
