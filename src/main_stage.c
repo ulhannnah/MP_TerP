@@ -37,6 +37,8 @@ volatile uint32_t g_stage_samples;
 volatile uint32_t g_stage_valid;
 volatile uint32_t g_stage_invalid;
 volatile uint32_t g_stage_last_mm;
+volatile int32_t g_stage_manual_sensor_angle_mdeg; /* user-measured physical angle */
+volatile int32_t g_stage_sample_angle_mdeg; /* snapshot at last Echo result */
 volatile uint32_t g_stage_frames;
 volatile uint32_t g_stage_candidates;
 volatile uint32_t g_stage_active_tracks;
@@ -197,6 +199,8 @@ int main(void)
     g_stage_valid=0u;
     g_stage_invalid=0u;
     g_stage_last_mm=0u;
+    g_stage_manual_sensor_angle_mdeg=-1;
+    g_stage_sample_angle_mdeg=-1;
     g_stage_frames=0u;
     g_stage_candidates=0u;
     g_stage_active_tracks=0u;
@@ -286,6 +290,8 @@ int main(void)
             if(valid)++g_stage_valid;
             else ++g_stage_invalid;
             g_stage_last_mm=mm;
+            /* Only a user-measured angle; never substitute servo command. */
+            g_stage_sample_angle_mdeg=g_stage_manual_sensor_angle_mdeg;
         }
         if(s_ultrasonic.sensor.state==US_IDLE &&
            (uint32_t)(now-last_trigger)>=100u) {
