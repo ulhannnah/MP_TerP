@@ -23,23 +23,23 @@
 #define MP_TERP_CONFIRM_PINMAP
 #endif
 /* 1 = enable this peripheral, 0 = leave it untouched.
- * Default: EVB onboard devices only. Verify external wiring before enabling.
+ * Full bench profile: verify wiring, supply and unloaded motor setup before powering.
  */
 #define TEST_LED          1
 #define TEST_ADC          1
 #define TEST_BUTTON       1
-#define TEST_OLED         0
-#define TEST_LCD          0
-#define TEST_ULTRASONIC   0
-#define TEST_SERVO        0 /* enable only for scope test with servo power disconnected */
-#define TEST_STEPPER      0
+#define TEST_OLED         1
+#define TEST_LCD          1
+#define TEST_ULTRASONIC   1
+#define TEST_SERVO        1
+#define TEST_STEPPER      1
 /* Standalone, unloaded motor only. One button-triggered +5deg / return
  * test per reset. No external mechanism attached. No absolute homing.
  * Enable TEST_STEPPER after checking driver wiring and supply.
  */
 #define TEST_STEPPER_BUTTON_JOG 1
-#if TEST_STEPPER && TEST_STEPPER_BUTTON_JOG && (!TEST_BUTTON || TEST_SERVO)
-#error "Stepper button jog requires button enabled and servo disabled"
+#if TEST_STEPPER && TEST_STEPPER_BUTTON_JOG && !TEST_BUTTON
+#error "Stepper button jog requires button enabled"
 #endif
 #endif
 #endif
