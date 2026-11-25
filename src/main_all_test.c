@@ -11,7 +11,8 @@
  * - Servo holds its configured initial angle until debugger command.
  * - Ultrasonic measures fixed-direction distance every ~100ms.
  * - ADC potentiometer read continuously; OLED/LCD display raw diagnostics.
- * - Stepper holds still until explicit physical home and target commands.
+ * - Standalone stepper jog: one button-triggered bounded round trip per reset.
+ *   Legacy manual home/target mode remains available when jog is disabled.
  * - LED toggles as a heartbeat; button counts presses.
  *
  * NO automatic radar sweep, fake angle inference, or simulated launcher.
@@ -71,6 +72,8 @@ volatile int32_t g_all_stepper_request_mdeg;
 volatile int32_t g_all_stepper_applied_mdeg;
 volatile uint32_t g_all_stepper_homed;
 volatile uint32_t g_all_stepper_moving;
+volatile uint32_t g_all_stepper_jog_state; /* 0 disabled, 1 waiting release, 2 armed, 3 out, 4 dwell, 5 back, 6 done, 7 failed */
+volatile int32_t g_all_stepper_jog_steps; /* commanded step count, not encoder feedback */
 
 static BoardSystemConfig s_cfg;
 static Servo s_servo;
@@ -189,6 +192,85 @@ static void runtime_error(uint32_t bit,uint32_t code)
     g_all_error=code;
 }
 
+#if TEST_STEPPER && TEST_STEPPER_BUTTON_JOG
+/* Unloaded standalone bench test. Relative zero only; never physical homing.
+ * Require a stable released button after boot, then a stable press.
+ * A single bounded test per reset avoids accumulated open-loop position error.
+ */
+static uint32_t s_jog_since;
+static uint32_t s_button_since;
+static bool s_button_last;
+static bool s_button_sampled;
+
+static void jog_fail(uint32_t code)
+{
+    (void)StepperController_Stop(&s_stepper);
+    (void)StepperController_Release(&s_stepper);
+    g_all_stepper_moving=0u;
+    g_all_stepper_jog_state=7u;
+    runtime_error(DEV_STEP,code);
+}
+
+static void stepper_jog_update(uint32_t now)
+{
+    bool pressed, moving=false;
+    int32_t steps=0;
+    uint32_t state=g_all_stepper_jog_state;
+    if(state==0u || state>=6u)return;
+    if(!(g_all_ready_mask&DEV_BUTTON)) { jog_fail(53u); return; }
+    pressed=((s_cfg.button_gpio.gpio->PDIR>>s_cfg.button_gpio.pin)&1u)!=0u;
+    if(s_cfg.button_gpio.active_low)pressed=!pressed;
+    if(!s_button_sampled || pressed!=s_button_last) {
+        s_button_sampled=true;
+        s_button_last=pressed;
+        s_button_since=now;
+    }
+    if(state==1u) {
+        if(!pressed && (uint32_t)(now-s_button_since)>=100u)
+            g_all_stepper_jog_state=2u;
+        return;
+    }
+    if(state==2u) {
+        if(!pressed || (uint32_t)(now-s_button_since)<100u)return;
+        if(StepperController_SetHome(&s_stepper,0)!=STEPPER_OK ||
+           StepperController_SetTargetAngle(&s_stepper,5000)!=STEPPER_OK) {
+            jog_fail(54u);return;
+        }
+        s_jog_since=now;
+        g_all_stepper_jog_state=3u;
+        g_all_stepper_moving=1u;
+        return;
+    }
+    if(StepperController_GetPosition(&s_stepper,NULL,&steps,&moving)!=STEPPER_OK) {
+        jog_fail(55u);return;
+    }
+    g_all_stepper_jog_steps=steps;
+    g_all_stepper_moving=moving?1u:0u;
+    if(state==3u || state==5u) {
+        if(moving) {
+            if((uint32_t)(now-s_jog_since)>=2000u)jog_fail(56u);
+            return;
+        }
+        if(state==3u) {
+            if(steps<=0) { jog_fail(57u);return; }
+            s_jog_since=now;
+            g_all_stepper_jog_state=4u;
+        } else {
+            if(steps!=0 || StepperController_Release(&s_stepper)!=STEPPER_OK) {
+                jog_fail(57u);return;
+            }
+            g_all_stepper_jog_state=6u;
+        }
+    } else if(state==4u && (uint32_t)(now-s_jog_since)>=500u) {
+        if(StepperController_SetTargetAngle(&s_stepper,0)!=STEPPER_OK) {
+            jog_fail(58u);return;
+        }
+        s_jog_since=now;
+        g_all_stepper_jog_state=5u;
+    }
+}
+#endif
+
 static void draw_screen(void)
 {
     char line[32];
@@ -297,6 +379,9 @@ int main(void)
             if(!ok)StepMotor_Release(&s_step_motor);
         }
     }
+#if TEST_STEPPER && TEST_STEPPER_BUTTON_JOG
+    if(g_all_ready_mask&DEV_STEP)g_all_stepper_jog_state=1u;
+#endif
     g_all_boot_stage=9u;
     g_all_state=2u;
 
@@ -304,8 +389,11 @@ int main(void)
         uint32_t now,mm;
         bool valid;
         uint16_t raw;
-        int32_t servo_target,step_target,angle;
+        int32_t servo_target;
+#if !(TEST_STEPPER && TEST_STEPPER_BUTTON_JOG)
+        int32_t step_target,angle;
         bool moving;
+#endif
         if(g_all_state==0xDEADu)continue;
         now=TimerManager_GetTickMs();
         g_all_tick_ms=now;
@@ -352,6 +440,9 @@ int main(void)
 
         }
         if(g_all_ready_mask&DEV_STEP) {
+#if TEST_STEPPER && TEST_STEPPER_BUTTON_JOG
+        stepper_jog_update(now);
+#else
         /* Explicit home token, not automatic. The stepper must physically
          * be at the angle supplied in g_all_stepper_home_angle_mdeg. */
         if(g_all_stepper_home_confirm==0x484F4D45u && !g_all_stepper_homed) {
@@ -377,7 +468,7 @@ int main(void)
             if(StepperController_GetPosition(&s_stepper,&angle,NULL,&moving)
                 ==STEPPER_OK)g_all_stepper_moving=moving?1u:0u;
         }
-
+#endif
         }
         if((g_all_ready_mask&DEV_LED) && (uint32_t)(now-last_led)>=500u) {
             last_led=now;
