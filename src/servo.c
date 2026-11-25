@@ -37,12 +37,29 @@ static uint32_t pulse_ticks(const Servo *servo, uint32_t pulse_us)
 
 static uint32_t angle_pulse_us(const Servo *servo, int32_t angle)
 {
-    const uint64_t angle_range =
-        (uint32_t)(servo->maximum_angle_mdeg - servo->minimum_angle_mdeg);
-    const uint64_t offset = (uint32_t)(angle - servo->minimum_angle_mdeg);
-    const uint64_t pulse_span = servo->maximum_pulse_us - servo->minimum_pulse_us;
-    return servo->minimum_pulse_us +
-        (uint32_t)((pulse_span * offset + angle_range / 2u) / angle_range);
+    if (servo->calibration_count >= 2u) {
+        /* Caller rejects out-of-range angles; never extrapolate the table. */
+        for (uint8_t i = 1u; i < servo->calibration_count; ++i) {
+            const ServoCalibrationPoint *lo = &servo->calibration[i - 1u];
+            const ServoCalibrationPoint *hi = &servo->calibration[i];
+            if (angle <= hi->angle_mdeg) {
+                const uint64_t span = (uint32_t)(hi->angle_mdeg - lo->angle_mdeg);
+                const uint64_t offset = (uint32_t)(angle - lo->angle_mdeg);
+                const uint64_t pulse_span = hi->pulse_us - lo->pulse_us;
+                return lo->pulse_us +
+                    (uint32_t)((pulse_span * offset + span / 2u) / span);
+            }
+        }
+        return servo->calibration[servo->calibration_count - 1u].pulse_us;
+    }
+    {
+        const uint64_t angle_range =
+            (uint32_t)(servo->maximum_angle_mdeg - servo->minimum_angle_mdeg);
+        const uint64_t offset = (uint32_t)(angle - servo->minimum_angle_mdeg);
+        const uint64_t pulse_span = servo->maximum_pulse_us - servo->minimum_pulse_us;
+        return servo->minimum_pulse_us +
+            (uint32_t)((pulse_span * offset + angle_range / 2u) / angle_range);
+    }
 }
 
 static uint32_t pulse_angle_offset(const Servo *servo, uint32_t pulse_us)
@@ -101,9 +118,11 @@ ServoResult Servo_Init(Servo *servo, const ServoConfig *cfg)
     servo->minimum_angle_mdeg = cfg->minimum_angle_mdeg;
     servo->maximum_angle_mdeg = cfg->maximum_angle_mdeg;
     servo->angle_mdeg = cfg->initial_angle_mdeg;
+    servo->calibration_count = 0u; /* legacy mapping until valid calibration installed */
     servo->running = 0u;
     servo->initialized = 0u;
     init_pulse = angle_pulse_us(servo, cfg->initial_angle_mdeg);
+    servo->last_pulse_us = init_pulse;
     if (pulse_ticks(servo, cfg->maximum_pulse_us) >= period_ticks ||
         pulse_ticks(servo, cfg->minimum_pulse_us) == 0u) return SERVO_ERR_CLOCK;
 
@@ -130,14 +149,56 @@ ServoResult Servo_Init(Servo *servo, const ServoConfig *cfg)
     return Servo_Start(servo);
 }
 
+ServoResult Servo_SetCalibration(Servo *servo,
+                                 const ServoCalibrationPoint *points,
+                                 uint8_t count)
+{
+    if (servo == NULL || !servo->initialized) return SERVO_ERR_NOT_INITIALIZED;
+    if (points == NULL || count < 2u || count > SERVO_MAX_CALIBRATION_POINTS)
+        return SERVO_ERR_ARGUMENT;
+    /* Validate the complete table before modifying any live settings. */
+    for (uint8_t i = 0u; i < count; ++i) {
+        if (points[i].angle_mdeg < servo->minimum_angle_mdeg ||
+            points[i].angle_mdeg > servo->maximum_angle_mdeg ||
+            points[i].pulse_us < servo->minimum_pulse_us ||
+            points[i].pulse_us > servo->maximum_pulse_us)
+            return SERVO_ERR_RANGE;
+        if (i != 0u &&
+            (points[i].angle_mdeg <= points[i - 1u].angle_mdeg ||
+             points[i].pulse_us <= points[i - 1u].pulse_us))
+            return SERVO_ERR_CALIBRATION;
+    }
+    /* Do not activate a range which excludes the current command. */
+    if (servo->angle_mdeg < points[0].angle_mdeg ||
+        servo->angle_mdeg > points[count - 1u].angle_mdeg)
+        return SERVO_ERR_RANGE;
+    for (uint8_t i = 0u; i < count; ++i)
+        servo->calibration[i] = points[i];
+    servo->calibration_count = count;
+    /* Changing the profile never changes CnV until the next command. */
+    return SERVO_OK;
+}
+
+ServoResult Servo_ClearCalibration(Servo *servo)
+{
+    if (servo == NULL || !servo->initialized) return SERVO_ERR_NOT_INITIALIZED;
+    servo->calibration_count = 0u;
+    return SERVO_OK;
+}
+
 ServoResult Servo_SetAngle(Servo *servo, int32_t angle_mdeg)
 {
     uint32_t pulse;
     if (servo == NULL || !servo->initialized) return SERVO_ERR_NOT_INITIALIZED;
     if (angle_mdeg < servo->minimum_angle_mdeg ||
         angle_mdeg > servo->maximum_angle_mdeg) return SERVO_ERR_RANGE;
+    if (servo->calibration_count >= 2u &&
+        (angle_mdeg < servo->calibration[0].angle_mdeg ||
+         angle_mdeg > servo->calibration[servo->calibration_count - 1u].angle_mdeg))
+        return SERVO_ERR_RANGE;
     pulse = angle_pulse_us(servo, angle_mdeg);
     servo->ftm->CONTROLS[servo->channel].CnV = pulse_ticks(servo, pulse);
+    servo->last_pulse_us = pulse;
     servo->angle_mdeg = angle_mdeg;
     return SERVO_OK;
 }
@@ -148,6 +209,9 @@ ServoResult Servo_SetPulseUs(Servo *servo, uint32_t pulse_us)
     if (pulse_us < servo->minimum_pulse_us ||
         pulse_us > servo->maximum_pulse_us) return SERVO_ERR_RANGE;
     servo->ftm->CONTROLS[servo->channel].CnV = pulse_ticks(servo, pulse_us);
+    servo->last_pulse_us = pulse_us;
+    /* Direct pulse tuning bypasses the calibration map. Angle is an
+     * uncalibrated estimate; use GetPulseUs for the commanded PWM value. */
     servo->angle_mdeg = servo->minimum_angle_mdeg +
         (int32_t)pulse_angle_offset(servo, pulse_us);
     return SERVO_OK;
@@ -187,5 +251,13 @@ ServoResult Servo_GetAngle(const Servo *servo, int32_t *angle_mdeg)
     if (servo == NULL || !servo->initialized) return SERVO_ERR_NOT_INITIALIZED;
     if (angle_mdeg == NULL) return SERVO_ERR_ARGUMENT;
     *angle_mdeg = servo->angle_mdeg;
+    return SERVO_OK;
+}
+
+ServoResult Servo_GetPulseUs(const Servo *servo, uint32_t *pulse_us)
+{
+    if (servo == NULL || !servo->initialized) return SERVO_ERR_NOT_INITIALIZED;
+    if (pulse_us == NULL) return SERVO_ERR_ARGUMENT;
+    *pulse_us = servo->last_pulse_us;
     return SERVO_OK;
 }
