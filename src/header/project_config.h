@@ -31,7 +31,7 @@
 #define TEST_OLED         0
 #define TEST_LCD          0
 #define TEST_ULTRASONIC   0
-#define TEST_SERVO        0
+#define TEST_SERVO        0 /* enable only for scope test with servo power disconnected */
 #define TEST_STEPPER      0
 #endif
 #endif
