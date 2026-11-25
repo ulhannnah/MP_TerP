@@ -1,3 +1,5 @@
+#include "project_config.h"
+
 /*
  * Optional step-by-step board bring-up entry point.
  *
