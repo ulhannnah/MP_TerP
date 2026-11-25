@@ -6,12 +6,14 @@
  */
 #if defined(MP_TERP_USE_BOARD_CONFIG_TEMPLATE) && (defined(MP_TERP_ALL_TEST_MAIN) || (defined(MP_TERP_STAGE_MAIN) && MP_TERP_STAGE != 4))
 #include "board_system.h"
+#include "app_profile.h"
 #include "lcd_hd44780.h"
 #include "mp_irq_compat.h"
 #include <stddef.h>
 #include <string.h>
 
 static LCDHD44780 s_lcd;
+static bool board_lcd_init_cb(void *user);
 
 /* LPIT tick provides a deliberately conservative delay >= requested time.
  * Foreground only; requires enabled interrupts and a working 1ms tick. */
@@ -67,16 +69,20 @@ bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg)
     cfg->use_gpio_button=1u;
     cfg->button_gpio=(GpioButtonConfig){PORTC,PTC,PCC_PORTC_INDEX,12u,false,false};
     cfg->lcd_write=LCDHD44780_WriteLine;
+    cfg->lcd_init=board_lcd_init_cb;
     cfg->user=&s_lcd;
+#if defined(MP_TERP_STAGE_MAIN) && MP_TERP_STAGE == 5
+    /* Stage 5 only: no auto-sweep in the default ALL_TEST firmware.
+     * Requires physically coupled scan direction and explicit Stepper home. */
+    cfg->application=MP_TERP_Radar120Profile();
+#endif
     return true;
 #endif
 }
 
-#if defined(MP_TERP_ALL_TEST_MAIN)
-extern void MP_TERP_AllTestEchoCaptureIrq(void);
-extern void MP_TERP_AllTestButtonPortIrq(void);
-
-bool MP_TERP_AllTestLCDInit(void)
+/* Initialize the actual 4-bit LCD before first write in Stage 5.
+ * ALL_TEST retains the established public helper. */
+static bool board_lcd_init(void)
 {
     LCDHD44780Config cfg={0};
     cfg.rs=(LCDPin){PORTD,PTD,PCC_PORTD_INDEX,4u};
@@ -88,10 +94,27 @@ bool MP_TERP_AllTestLCDInit(void)
     cfg.columns=16u;cfg.rows=2u;cfg.delay_us=lcd_delay_us;
     return LCDHD44780_Init(&s_lcd,&cfg);
 }
+static bool board_lcd_init_cb(void *user)
+{
+    (void)user;
+    return board_lcd_init();
+}
+
+#if defined(MP_TERP_ALL_TEST_MAIN)
+extern void MP_TERP_AllTestEchoCaptureIrq(void);
+extern void MP_TERP_AllTestButtonPortIrq(void);
+
+bool MP_TERP_AllTestLCDInit(void) { return board_lcd_init(); }
+
 void FTM0_Ch6_Ch7_IRQHandler(void){MP_TERP_AllTestEchoCaptureIrq();}
 void PORTC_IRQHandler(void){MP_TERP_AllTestButtonPortIrq();}
-#elif MP_TERP_STAGE == 3
+#elif defined(MP_TERP_STAGE_MAIN) && MP_TERP_STAGE == 3
 extern void MP_TERP_StageEchoCaptureIrq(void);
 void FTM0_Ch6_Ch7_IRQHandler(void){MP_TERP_StageEchoCaptureIrq();}
+#elif defined(MP_TERP_STAGE_MAIN) && MP_TERP_STAGE == 5
+extern void MP_TERP_StageEchoCaptureIrq(void);
+extern void MP_TERP_StageButtonPortIrq(void);
+void FTM0_Ch6_Ch7_IRQHandler(void){MP_TERP_StageEchoCaptureIrq();}
+void PORTC_IRQHandler(void){MP_TERP_StageButtonPortIrq();}
 #endif
 #endif
