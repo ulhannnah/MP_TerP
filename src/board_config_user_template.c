@@ -14,6 +14,10 @@
 
 static LCDHD44780 s_lcd;
 static bool board_lcd_init_cb(void *user);
+static void board_lcd_service_cb(void *user,uint32_t now_ms)
+{
+    if(user!=NULL) (void)LCDHD44780_Service((LCDHD44780 *)user,now_ms);
+}
 
 /* LPIT tick provides a deliberately conservative delay >= requested time.
  * Foreground only; requires enabled interrupts and a working 1ms tick. */
@@ -75,6 +79,10 @@ bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg)
     /* Stage 5 only: no auto-sweep in the default ALL_TEST firmware.
      * Requires physically coupled scan direction and explicit Stepper home. */
     cfg->application=MP_TERP_Radar120Profile();
+    /* Stage 5 queues status lines and advances at most one GPIO edge/tick.
+     * ALL_TEST keeps its previously verified synchronous WriteLine. */
+    cfg->lcd_write=LCDHD44780_QueueLine;
+    cfg->lcd_service=board_lcd_service_cb;
     /* Manually align the Stepper with the radar's 90-degree center before
      * confirming home in Stage 5. No homing sensor is available. */
     cfg->aiming_scan_center_mdeg=90000;
