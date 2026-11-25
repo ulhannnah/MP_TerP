@@ -40,6 +40,13 @@ volatile uint32_t g_all_boot_stage;
 volatile uint32_t g_all_wdog_cs_before;
 volatile uint32_t g_all_wdog_cs_after;
 volatile uint32_t g_all_exception_number;
+volatile uint32_t g_all_fault_cfsr;
+volatile uint32_t g_all_fault_hfsr;
+volatile uint32_t g_all_fault_icsr;
+volatile uint32_t g_all_fault_mmfar;
+volatile uint32_t g_all_fault_bfar;
+volatile uint32_t g_all_fault_shcsr;
+
 volatile uint32_t g_all_tick_ms;
 volatile uint32_t g_all_echo_samples;
 volatile uint32_t g_all_echo_valid;
@@ -75,6 +82,31 @@ static void fail(uint32_t code)
     g_all_error=code;
     g_all_state=0xDEADu;
 }
+
+/* Cortex-M4 fault capture. No SDK-specific CMSIS SCB declaration required.
+ * Do not resume a faulted context. Inspect these values and reset.
+ * MMFAR/BFAR are meaningful only when their CFSR validity flags are set.
+ */
+#if defined(__arm__) || defined(__thumb__)
+static void capture_core_fault(uint32_t code)
+{
+    uint32_t ipsr;
+    __asm volatile ("mrs %0, ipsr" : "=r"(ipsr));
+    g_all_exception_number=ipsr;
+    g_all_fault_icsr=*(volatile const uint32_t *)0xE000ED04u;
+    g_all_fault_shcsr=*(volatile const uint32_t *)0xE000ED24u;
+    g_all_fault_cfsr=*(volatile const uint32_t *)0xE000ED28u;
+    g_all_fault_hfsr=*(volatile const uint32_t *)0xE000ED2Cu;
+    g_all_fault_mmfar=*(volatile const uint32_t *)0xE000ED34u;
+    g_all_fault_bfar=*(volatile const uint32_t *)0xE000ED38u;
+    fail(code);
+    for(;;) { __asm volatile ("nop"); }
+}
+void HardFault_Handler(void) { capture_core_fault(92u); }
+void MemManage_Handler(void) { capture_core_fault(93u); }
+void BusFault_Handler(void) { capture_core_fault(94u); }
+void UsageFault_Handler(void) { capture_core_fault(95u); }
+#endif
 
 /* Bench only: disable WDOG before clock changes. Preserve the prior
  * interrupt mask. A locked configuration is reported rather than ignored.
