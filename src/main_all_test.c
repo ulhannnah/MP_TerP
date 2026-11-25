@@ -1,3 +1,5 @@
+#include "project_config.h"
+
 /*
  * Full-peripheral bring-up on REAL hardware, without false 2-D radar angles.
  *
@@ -30,6 +32,7 @@
 extern bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg);
 extern bool MP_TERP_AllTestLCDInit(void);
 
+volatile uint32_t g_all_pinmap_confirm; /* 0x50494E53 after verifying external wiring */
 volatile uint32_t g_all_state;        /* 0 boot, 1 ready, 2 running, 0xDEAD failure */
 volatile uint32_t g_all_error;
 volatile uint32_t g_all_tick_ms;
@@ -162,7 +165,31 @@ int main(void)
         else if(!GpioOutput_Init(&s_led,&s_cfg.led_gpio))fail(11u);
         else if(!GpioButton_Init(&s_button,&s_cfg.button_gpio))fail(12u);
         else if(!ADCChannel_Init(&s_adc,&s_cfg.adc))fail(13u);
-        else if(StepMotor_Init(&s_step_motor,s_cfg.stepper_pins,
+        else {
+            /* Real onboard-only bring-up before external pin authorization.
+             * State 3: LED and ADC run; external signals remain untouched.
+             * Suspend, set g_all_pinmap_confirm=0x50494E53, resume.
+             */
+            uint32_t last=TimerManager_GetTickMs();
+            g_all_state=3u;
+            while(g_all_pinmap_confirm!=0x50494E53u) {
+                uint32_t now=TimerManager_GetTickMs();
+                uint16_t raw;
+                g_all_tick_ms=now;
+                if(!s_adc_pending) {
+                    if(ADCChannel_Start(&s_adc))s_adc_pending=1u;
+                } else if(ADCChannel_Poll(&s_adc,&raw)) {
+                    g_all_adc_raw=raw;s_adc_pending=0u;
+                }
+                if((uint32_t)(now-last)>=500u) {
+                    last=now;s_led_on=(uint8_t)!s_led_on;
+                    GpioOutput_Write(&s_led,s_led_on!=0u);
+                    ++g_all_heartbeat;
+                }
+            }
+            g_all_state=0u;
+            g_all_pinmap_confirm=0u;
+            if(StepMotor_Init(&s_step_motor,s_cfg.stepper_pins,
                                s_cfg.stepper_delay)!=0)fail(14u);
         else {
             StepperControllerConfig stepcfg=s_cfg.stepper;
@@ -185,6 +212,7 @@ int main(void)
                 s_adc_pending=0u;s_led_on=0u;
                 g_all_state=1u;
             }
+        }
         }
     }
 
