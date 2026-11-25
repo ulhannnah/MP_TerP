@@ -37,6 +37,18 @@ bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg)
     /* PTD10 FTM2_CH0 ALT2; separate from Echo FTM0. */
     cfg->servo=(ServoConfig){FTM2,0u,PORTD,PCC_PORTD_INDEX,10u,2u,
         1u,8000000u,20000u,1100u,1900u,20000,160000,90000};
+    /* SG90 120-degree COMMAND range: 30/60/90/120/150 degrees.
+     * Baseline pulses reproduce the previously used 20..160 linear PWM map.
+     * These are PROVISIONAL, NOT measured angular corrections. After measuring
+     * actual angles, replace ONLY the pulse_us values here. Preserve rising
+     * pulse order and the conservative 1100..1900us hardware envelope.
+     * Calibrated Servo_SetAngle rejects angles outside 30..150 degrees. */
+    cfg->servo_calibration_count=5u;
+    cfg->servo_calibration[0]=(ServoCalibrationPoint){30000,1157u};
+    cfg->servo_calibration[1]=(ServoCalibrationPoint){60000,1329u};
+    cfg->servo_calibration[2]=(ServoCalibrationPoint){90000,1500u};
+    cfg->servo_calibration[3]=(ServoCalibrationPoint){120000,1671u};
+    cfg->servo_calibration[4]=(ServoCalibrationPoint){150000,1843u};
     cfg->ultrasonic=(UltrasonicPortConfig){
         FTM0,6u,1u,8000000u,PORTE,PCC_PORTE_INDEX,8u,2u,
         PORTB,PTB,PCC_PORTB_INDEX,8u,TIMER_CH1,10u,30000u,100u,25000u};
