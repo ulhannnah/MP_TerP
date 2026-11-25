@@ -27,6 +27,9 @@ typedef struct {
     OLEDPortConfig oled_port;
     uint8_t custom_oled_port; /* 0 keeps existing default mapping */
     AppConfig application;
+    /* Scan angle corresponding to the Stepper's manually confirmed zero. */
+    int32_t aiming_scan_center_mdeg;
+    bool (*lcd_init)(void *user);
     bool (*lcd_write)(void *user,uint8_t row,const char *line);
     void (*led_write)(void *user,bool on);
     uint8_t use_gpio_led;
@@ -47,6 +50,7 @@ typedef struct {
     App app;
     BoardSystemConfig config;
     uint8_t adc_pending;
+    int32_t aiming_scan_center_mdeg;
     uint8_t initialized;
 } BoardSystem;
 
@@ -59,4 +63,7 @@ void BoardSystem_Update(BoardSystem *board);
 void BoardSystem_OnEchoCaptureIrq(BoardSystem *board);
 void BoardSystem_OnFireButton(BoardSystem *board);
 void BoardSystem_OnFireButtonPortIrq(BoardSystem *board);
+/* Only after physically verifying the Stepper points at the selected scan
+ * center. Declares relative zero; NO mechanical homing move is performed. */
+bool BoardSystem_ConfirmStepperCenter(BoardSystem *board);
 #endif
