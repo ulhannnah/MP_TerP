@@ -26,3 +26,5 @@ jobs:
         run: bash tests/run_integration_tests.sh
       - name: Stage 5 프로파일 및 좌표계 테스트
         run: bash tests/run_profile_tests.sh
+      - name: HD44780 비차단 LCD 큐/타이밍 테스트
+        run: bash tests/run_lcd_async_tests.sh
