@@ -20,6 +20,7 @@
 #endif
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include "board_system.h"
@@ -85,6 +86,19 @@ void MP_TERP_AllTestButtonPortIrq(void)
 static bool validate_mapping(void)
 {
     if(s_cfg.timer.tick_channel==TIMER_CHANNEL_NONE ||
+       s_cfg.timer.clock_hz==0u ||
+       s_cfg.led_gpio.port==NULL || s_cfg.led_gpio.gpio==NULL ||
+       s_cfg.button_gpio.port==NULL || s_cfg.button_gpio.gpio==NULL ||
+       s_cfg.servo.port==NULL || s_cfg.ultrasonic.echo_port==NULL ||
+       s_cfg.ultrasonic.trigger_port==NULL ||
+       s_cfg.ultrasonic.trigger_gpio==NULL ||
+       s_cfg.adc.adc==NULL ||
+       s_cfg.stepper.period_us==0u ||
+       s_cfg.stepper.steps_per_revolution==0u ||
+       s_cfg.stepper_pins[0].port==NULL ||
+       s_cfg.stepper_pins[1].port==NULL ||
+       s_cfg.stepper_pins[2].port==NULL ||
+       s_cfg.stepper_pins[3].port==NULL ||
        s_cfg.servo.ftm==NULL || s_cfg.ultrasonic.ftm==NULL ||
        s_cfg.servo.ftm==s_cfg.ultrasonic.ftm ||
        s_cfg.timer.tick_channel==s_cfg.stepper.timer_channel ||
@@ -134,6 +148,10 @@ int main(void)
     uint32_t last_echo=0u,last_display=0u,last_led=0u;
     g_all_state=0u;
     g_all_error=0u;
+#ifndef MP_TERP_CONFIRM_PINMAP
+    /* Do not access peripherals until the actual board wiring is verified. */
+    fail(3u);
+#else
     if(!MP_TERP_GetBoardConfig(&s_cfg))fail(1u);
     else if(!validate_mapping())fail(2u);
     else {
@@ -169,6 +187,8 @@ int main(void)
             }
         }
     }
+
+#endif /* MP_TERP_CONFIRM_PINMAP */
 
     for(;;) {
         uint32_t now,mm;
