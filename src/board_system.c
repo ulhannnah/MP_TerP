@@ -30,11 +30,21 @@ static bool adc_read(void *ctx,uint16_t *raw){
 }
 static bool aim_move(void *ctx,int32_t angle){
     BoardSystem *b=(BoardSystem *)ctx;
-    return StepperController_SetTargetAngle(&b->stepper,angle)==STEPPER_OK;
+    const int64_t relative=(int64_t)angle-b->aiming_scan_center_mdeg;
+    if(relative < INT32_MIN || relative > INT32_MAX) return false;
+    return StepperController_SetTargetAngle(&b->stepper,(int32_t)relative)==STEPPER_OK;
 }
 static bool aim_position(void *ctx,int32_t *angle,bool *moving){
     BoardSystem *b=(BoardSystem *)ctx;
-    return StepperController_GetPosition(&b->stepper,angle,NULL,moving)==STEPPER_OK;
+    int32_t relative=0;
+    if(angle==NULL ||
+       StepperController_GetPosition(&b->stepper,&relative,NULL,moving)!=STEPPER_OK)
+        return false;
+    /* Stepper position is relative; App compares absolute scan angles. */
+    const int64_t mapped=(int64_t)relative+b->aiming_scan_center_mdeg;
+    if(mapped<INT32_MIN || mapped>INT32_MAX)return false;
+    *angle=(int32_t)mapped;
+    return true;
 }
 static bool oled_flush(void *ctx){(void)ctx;return OLED_Update()==0;}
 static bool lcd_write(void *ctx,uint8_t row,const char *line){
@@ -54,9 +64,13 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
        cfg->servo.ftm==cfg->ultrasonic.ftm||
        cfg->stepper.timer_channel==cfg->ultrasonic.trigger_timer_channel||
        cfg->stepper.timer_channel==cfg->timer.tick_channel||
-       cfg->ultrasonic.trigger_timer_channel==cfg->timer.tick_channel)
+       cfg->ultrasonic.trigger_timer_channel==cfg->timer.tick_channel ||
+       cfg->aiming_scan_center_mdeg < cfg->application.minimum_scan_angle_mdeg ||
+       cfg->aiming_scan_center_mdeg > cfg->application.maximum_scan_angle_mdeg ||
+       (cfg->lcd_write && !cfg->lcd_init))
        return false;
     b->initialized=0u;b->adc_pending=0u;b->config=*cfg;
+    b->aiming_scan_center_mdeg=cfg->aiming_scan_center_mdeg;
     SOSC_init_8MHz();
     SPLL_init_160MHz();
     NormalRUNmode_80MHz();
@@ -77,6 +91,7 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
     if(!UltrasonicPort_Init(&b->ultrasonic,&cfg->ultrasonic))return false;
     if(cfg->custom_oled_port && !OLED_PortConfigure(&cfg->oled_port))return false;
     if(OLED_Init()!=0)return false;
+    if(cfg->lcd_write && !cfg->lcd_init(cfg->user))return false;
     app=cfg->application;
     app.hw.context=b;
     app.hw.servo_set_angle=servo_move;
@@ -109,4 +124,11 @@ void BoardSystem_OnFireButton(BoardSystem *b){
 void BoardSystem_OnFireButtonPortIrq(BoardSystem *b){
     if(b&&b->initialized&&b->config.use_gpio_button)
         GpioButton_OnPortIrq(&b->button);
+}
+
+bool BoardSystem_ConfirmStepperCenter(BoardSystem *b)
+{
+    if(!b || !b->initialized || StepperController_IsHomed(&b->stepper))
+        return false;
+    return StepperController_SetHome(&b->stepper,0)==STEPPER_OK;
 }
