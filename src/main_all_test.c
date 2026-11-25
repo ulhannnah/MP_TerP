@@ -72,7 +72,7 @@ volatile int32_t g_all_stepper_request_mdeg;
 volatile int32_t g_all_stepper_applied_mdeg;
 volatile uint32_t g_all_stepper_homed;
 volatile uint32_t g_all_stepper_moving;
-volatile uint32_t g_all_servo_jog_state; /* 0 disabled, 1 release, 2 armed, 3 out, 4 return, 6 done, 7 failed */
+volatile uint32_t g_all_servo_jog_state; /* 0 off, 1 release, 2 armed, 3 left, 4 right, 5 center, 6 done, 7 failed */
 volatile uint32_t g_all_sw3_presses;
 volatile uint32_t g_all_motor_test_busy; /* 0 idle, 1 stepper, 2 servo */
 volatile uint32_t g_all_stepper_jog_state; /* 0 disabled, 1 waiting release, 2 armed, 3 out, 4 dwell, 5 back, 6 done, 7 failed */
@@ -201,7 +201,7 @@ static void runtime_error(uint32_t bit,uint32_t code)
 #if TEST_STEPPER && TEST_STEPPER_BUTTON_JOG
 /* Unloaded standalone bench test. Relative zero only; never physical homing.
  * Require a stable released button after boot, then a stable press.
- * A single bounded test per reset avoids accumulated open-loop position error.
+ * A single bounded 100-degree command per reset avoids accumulated open-loop position error.
  */
 static uint32_t s_jog_since;
 static uint32_t s_button_since;
@@ -242,7 +242,7 @@ static void stepper_jog_update(uint32_t now)
         if(g_all_motor_test_busy!=0u) { g_all_stepper_jog_state=1u;return; }
         g_all_motor_test_busy=1u;
         if(StepperController_SetHome(&s_stepper,0)!=STEPPER_OK ||
-           StepperController_SetTargetAngle(&s_stepper,5000)!=STEPPER_OK) {
+           StepperController_SetTargetAngle(&s_stepper,TEST_STEPPER_TARGET_MDEG)!=STEPPER_OK) {
             jog_fail(54u);return;
         }
         s_jog_since=now;
@@ -257,7 +257,7 @@ static void stepper_jog_update(uint32_t now)
     g_all_stepper_moving=moving?1u:0u;
     if(state==3u || state==5u) {
         if(moving) {
-            if((uint32_t)(now-s_jog_since)>=2000u)jog_fail(56u);
+            if((uint32_t)(now-s_jog_since)>=TEST_STEPPER_TIMEOUT_MS)jog_fail(56u);
             return;
         }
         if(state==3u) {
@@ -282,8 +282,9 @@ static void stepper_jog_update(uint32_t now)
 #endif
 
 #if TEST_SERVO && TEST_BUTTON
-/* Standalone unloaded servo only. Single small move and return per reset.
- * No scan, no sensor-to-motor coupling. Commanded angle is not feedback. */
+/* Standalone unloaded SG90 only. 90 -> 40 -> 140 -> 90 degrees.
+ * The 40-to-140 sweep is 100 commanded degrees, not encoder feedback.
+ * No scan or sensor-to-motor coupling. */
 static uint32_t s_servo_since,s_sw3_since;
 static bool s_sw3_sampled,s_sw3_last;
 static bool servo_jog_command(int32_t angle)
@@ -315,14 +316,18 @@ static void servo_jog_update(uint32_t now)
         if(!pressed || (uint32_t)(now-s_sw3_since)<100u)return;
         if(g_all_motor_test_busy!=0u) { g_all_servo_jog_state=1u;return; }
         g_all_motor_test_busy=2u;
-        if(servo_jog_command(s_cfg.servo.initial_angle_mdeg+5000)) {
+        if(servo_jog_command(TEST_SERVO_LEFT_MDEG)) {
             s_servo_since=now;g_all_servo_jog_state=3u;
         }
-    } else if(state==3u && (uint32_t)(now-s_servo_since)>=1000u) {
-        if(servo_jog_command(s_cfg.servo.initial_angle_mdeg)) {
+    } else if(state==3u && (uint32_t)(now-s_servo_since)>=TEST_SERVO_HOLD_MS) {
+        if(servo_jog_command(TEST_SERVO_RIGHT_MDEG)) {
             s_servo_since=now;g_all_servo_jog_state=4u;
         }
-    } else if(state==4u && (uint32_t)(now-s_servo_since)>=1000u) {
+    } else if(state==4u && (uint32_t)(now-s_servo_since)>=TEST_SERVO_HOLD_MS) {
+        if(servo_jog_command(TEST_SERVO_CENTER_MDEG)) {
+            s_servo_since=now;g_all_servo_jog_state=5u;
+        }
+    } else if(state==5u && (uint32_t)(now-s_servo_since)>=TEST_SERVO_HOLD_MS) {
         g_all_servo_jog_state=6u;g_all_motor_test_busy=0u;
     }
 }
