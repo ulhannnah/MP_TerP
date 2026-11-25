@@ -37,7 +37,7 @@ bool App_Init(App *app,const AppConfig *cfg,uint32_t now){
        !cfg->hw.echo_take||!cfg->hw.aim_move||!cfg->hw.adc_read||
        !cfg->hw.aim_position||!cfg->hw.led_write||
        cfg->oled_period_ms==0u||cfg->lcd_period_ms==0u||
-       cfg->aim_tolerance_mdeg<0||cfg->maximum_display_distance_mm==0u||
+       cfg->aim_tolerance_mdeg>360000u||cfg->maximum_display_distance_mm==0u||
        (cfg->fire_snapshot_mode!=0u && cfg->fire_aim_timeout_ms==0u))
         return false;
     operating_limit = cfg->operating_target_limit == 0u ? 3u : cfg->operating_target_limit;
