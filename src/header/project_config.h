@@ -33,5 +33,13 @@
 #define TEST_ULTRASONIC   0
 #define TEST_SERVO        0 /* enable only for scope test with servo power disconnected */
 #define TEST_STEPPER      0
+/* Standalone, unloaded motor only. One button-triggered +5deg / return
+ * test per reset. No external mechanism attached. No absolute homing.
+ * Enable TEST_STEPPER after checking driver wiring and supply.
+ */
+#define TEST_STEPPER_BUTTON_JOG 1
+#if TEST_STEPPER && TEST_STEPPER_BUTTON_JOG && (!TEST_BUTTON || TEST_SERVO)
+#error "Stepper button jog requires button enabled and servo disabled"
+#endif
 #endif
 #endif
