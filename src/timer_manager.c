@@ -7,6 +7,9 @@
 #define LPIT_T_EN   (1u << 0)
 #define LPIT_TSOI   (1u << 17) /* Timeout stop; TSOT at bit 16 is trigger-start. */
 
+/* Debugger-visible initialization checkpoints. */
+volatile uint32_t g_lpit_init_stage;
+volatile uint32_t g_lpit_init_channel;
 static volatile uint32_t s_tick_ms;
 static volatile uint8_t s_initialized;
 static volatile uint8_t s_configured[4];
@@ -59,6 +62,8 @@ TimerResult TimerManager_Init(const TimerManagerConfig *config)
         (config->tick_channel != TIMER_CHANNEL_NONE &&
          !valid_channel(config->tick_channel))) return TIMER_ERR_ARGUMENT;
 
+    g_lpit_init_stage = 1u;
+    g_lpit_init_channel = 0xffffffffu;
     s_initialized = 0u;
     for (ch = 0u; ch < 4u; ++ch) MP_NvicDisable(irq_for(ch));
 
@@ -67,11 +72,27 @@ TimerResult TimerManager_Init(const TimerManagerConfig *config)
         (PCC->PCCn[PCC_LPIT_INDEX] & ~PCC_PCCn_PCS_MASK) |
         PCC_PCCn_PCS(config->pcc_clock_source) | PCC_PCCn_CGC_MASK;
 
-    LPIT0->MCR = 0u;
-    LPIT0->MIER = 0u;
-    for (ch = 0u; ch < 4u; ++ch) LPIT0->TMR[ch].TCTRL = 0u;
-    LPIT0->MSR = 0x0fu;
+    g_lpit_init_stage = 2u;
+    /* Enable the functional module clock before touching channel registers.
+     * Allow at least four functional-clock cycles before further access.
+     * Current board: 80MHz core / 40MHz LPIT. 32 NOPs allow ample margin.
+     */
     LPIT0->MCR = LPIT_MCR_M_CEN_MASK;
+    (void)LPIT0->MCR;
+#if defined(__arm__) || defined(__thumb__)
+    __asm volatile ("dsb" ::: "memory");
+    for (volatile uint32_t i = 0u; i < 32u; ++i)
+        __asm volatile ("nop");
+#endif
+    g_lpit_init_stage = 3u;
+    LPIT0->MIER = 0u;
+    g_lpit_init_stage = 4u;
+    for (ch = 0u; ch < 4u; ++ch) {
+        g_lpit_init_channel = ch;
+        LPIT0->TMR[ch].TCTRL = 0u;
+    }
+    LPIT0->MSR = 0x0fu;
+    g_lpit_init_stage = 5u;
 
     s_tick_ms = 0u;
     s_clocks_per_us = config->clock_hz / 1000000u;
@@ -86,12 +107,14 @@ TimerResult TimerManager_Init(const TimerManagerConfig *config)
         program_channel(tick, 1000u, false);
         s_configured[tick] = 1u;
     }
+    g_lpit_init_stage = 6u;
     s_initialized = 1u;
     if (s_tick_channel != TIMER_CHANNEL_NONE) {
         const uint32_t tick = (uint32_t)s_tick_channel;
         MP_NvicEnable(irq_for(tick));
         LPIT0->TMR[tick].TCTRL |= LPIT_T_EN;
     }
+    g_lpit_init_stage = 7u;
     return TIMER_OK;
 }
 
