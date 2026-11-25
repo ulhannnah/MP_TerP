@@ -231,6 +231,9 @@ int main(void)
     else {
 #if MP_TERP_STAGE == 2
         if(Servo_Init(&s_servo,&s_cfg.servo)!=SERVO_OK)stage_fault(20u);
+        else if(s_cfg.servo_calibration_count!=0u &&
+                Servo_SetCalibration(&s_servo,s_cfg.servo_calibration,
+                     s_cfg.servo_calibration_count)!=SERVO_OK)stage_fault(22u);
         else {
             /* Hold the configured initial angle, no automatic motion. */
             g_stage_servo_applied_mdeg=s_cfg.servo.initial_angle_mdeg;
