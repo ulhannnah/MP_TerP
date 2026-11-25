@@ -1,0 +1,26 @@
+#ifndef MP_TERP_PROJECT_CONFIG_H
+#define MP_TERP_PROJECT_CONFIG_H
+
+/* Default bench entry point. No S32DS -D options required.
+ * Explicit legacy stage/example selection still overrides this default.
+ * Set MP_TERP_SMOKE_MAIN to return to the no-peripheral test.
+ */
+#if !defined(MP_TERP_SMOKE_MAIN) && !defined(MP_TERP_STAGE_MAIN) && !defined(MP_TERP_USE_EXAMPLE_MAIN)
+#ifndef MP_TERP_ALL_TEST_MAIN
+#define MP_TERP_ALL_TEST_MAIN
+#endif
+#endif
+
+#if defined(MP_TERP_ALL_TEST_MAIN)
+#ifndef MP_TERP_USE_BOARD_CONFIG_TEMPLATE
+#define MP_TERP_USE_BOARD_CONFIG_TEMPLATE
+#endif
+/* Bench profile selected by request. Actual wiring is NOT certified.
+ * Keep external loads disconnected until the documented pinout and voltage
+ * are checked. Runtime debugger authorization is required before external IO.
+ */
+#ifndef MP_TERP_CONFIRM_PINMAP
+#define MP_TERP_CONFIRM_PINMAP
+#endif
+#endif
+#endif
