@@ -290,7 +290,8 @@ static void stepper_jog_update(uint32_t now)
  * 30 -> 60 -> 90 -> 120 -> 150 -> center 90 degrees.
  */
 static const int32_t s_servo_calibration_walk[] = {
-    30000, 60000, 90000, 120000, 150000, 90000
+    TEST_SERVO_LEFT_MDEG, 60000, TEST_SERVO_CENTER_MDEG,
+    120000, TEST_SERVO_RIGHT_MDEG, TEST_SERVO_CENTER_MDEG
 };
 static uint32_t s_servo_since,s_sw3_since;
 static bool s_sw3_sampled,s_sw3_last;
