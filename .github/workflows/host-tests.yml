@@ -1,5 +1,11 @@
 name: C 모듈 호스트 단위 테스트
 'on':
+  push:
+    branches: [jun_GPT]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/host-tests.yml'
   workflow_dispatch:
 jobs:
   host-tests:
@@ -16,3 +22,7 @@ jobs:
         run: bash tests/run_servo_tests.sh
       - name: 레이더 알고리즘
         run: bash tests/run_pipeline_tests.sh
+      - name: 최종 App 호스트 통합 테스트
+        run: bash tests/run_integration_tests.sh
+      - name: Stage 5 프로파일 및 좌표계 테스트
+        run: bash tests/run_profile_tests.sh
