@@ -34,20 +34,20 @@
 #define TEST_SERVO        1
 #define TEST_STEPPER      1
 /* One press per motor, per reset; keep mechanisms disconnected.
- * These are commanded angles, not measured encoder positions.
- * SW2: Stepper 0 -> 100 -> 0 degrees (at 4096 half-steps/rev).
- * SW3: SG90 90 -> 40 -> 140 -> 90 degrees (100-degree commanded span).
+ * Commands are NOT measured angles. SW2: Stepper 0 -> 100 -> 0 deg.
+ * SW3: SG90 calibration walk 30 -> 60 -> 90 -> 120 -> 150 -> 90 deg.
+ * Span is 120 COMMAND degrees; inspect actual angle and record it.
  * Stop immediately if an end stop, stall, abnormal noise or heat occurs.
  */
 #define TEST_STEPPER_BUTTON_JOG 1
 #define TEST_STEPPER_TARGET_MDEG 100000
 #define TEST_STEPPER_TIMEOUT_MS  12000u
-#define TEST_SERVO_LEFT_MDEG     40000
-#define TEST_SERVO_RIGHT_MDEG    140000
+#define TEST_SERVO_LEFT_MDEG     30000
+#define TEST_SERVO_RIGHT_MDEG    150000
 #define TEST_SERVO_CENTER_MDEG   90000
-#define TEST_SERVO_HOLD_MS       1500u
-#if (TEST_SERVO_RIGHT_MDEG - TEST_SERVO_LEFT_MDEG) <= 90000
-#error "Servo test must command more than 90 degrees of travel"
+#define TEST_SERVO_HOLD_MS       2000u
+#if (TEST_SERVO_RIGHT_MDEG - TEST_SERVO_LEFT_MDEG) != 120000
+#error "Servo calibration walk expects a 120 degree commanded span"
 #endif
 #if TEST_STEPPER_TARGET_MDEG <= 90000
 #error "Stepper test must command more than 90 degrees of travel"
