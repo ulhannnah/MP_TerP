@@ -36,7 +36,7 @@ bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg)
     cfg->timer=(TimerManagerConfig){6u,40000000u,TIMER_CH2};
     /* PTD10 FTM2_CH0 ALT2; separate from Echo FTM0. */
     cfg->servo=(ServoConfig){FTM2,0u,PORTD,PCC_PORTD_INDEX,10u,2u,
-        1u,8000000u,20000u,1300u,1700u,60000,120000,90000};
+        1u,8000000u,20000u,1100u,1900u,20000,160000,90000};
     cfg->ultrasonic=(UltrasonicPortConfig){
         FTM0,6u,1u,8000000u,PORTE,PCC_PORTE_INDEX,8u,2u,
         PORTB,PTB,PCC_PORTB_INDEX,8u,TIMER_CH1,10u,30000u,100u,25000u};
@@ -46,8 +46,8 @@ bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg)
     cfg->stepper_pins[3]=(StepMotorPin){PORTB,PTB,PCC_PORTB_INDEX,5u};
     cfg->stepper_delay=delay_ms;
     cfg->stepper_mode=STEP_MOTOR_HALF_STEP;
-    /* Provisional step count only; no motion before explicit manual home. */
-    cfg->stepper=(StepperControllerConfig){NULL,TIMER_CH0,5000u,4096u,-10000,10000};
+    /* Provisional 4096 half-steps/output rev; physical angle must be checked. */
+    cfg->stepper=(StepperControllerConfig){NULL,TIMER_CH0,5000u,4096u,-110000,110000};
     cfg->adc=(ADCChannelConfig){ADC0,PCC_ADC0_INDEX,1u,12u,5000u};
     cfg->custom_oled_port=0u; /* existing PTA2/3 ALT3 */
     cfg->use_gpio_led=1u;
