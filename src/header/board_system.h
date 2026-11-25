@@ -31,6 +31,9 @@ typedef struct {
     int32_t aiming_scan_center_mdeg;
     bool (*lcd_init)(void *user);
     bool (*lcd_write)(void *user,uint8_t row,const char *line);
+    /* Optional tick-driven service: Stage 5 asynchronous LCD only.
+     * Call from foreground, never from an ISR. */
+    void (*lcd_service)(void *user,uint32_t now_ms);
     void (*led_write)(void *user,bool on);
     uint8_t use_gpio_led;
     GpioOutputConfig led_gpio;
