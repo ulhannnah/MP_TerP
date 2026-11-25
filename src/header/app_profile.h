@@ -38,6 +38,8 @@ static inline AppConfig MP_TERP_Radar120Profile(void)
     cfg.aim_tolerance_mdeg = 2000;
     cfg.simulation_ms = 200u; /* LED only, no physical launcher */
     cfg.button_debounce_ms = 60u;
+    cfg.fire_snapshot_mode = 1u; /* button-time ID/angle, do not track while aiming */
+    cfg.fire_aim_timeout_ms = 12000u;
     return cfg;
 }
 
