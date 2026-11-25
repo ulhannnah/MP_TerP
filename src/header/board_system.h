@@ -14,6 +14,10 @@
 typedef struct {
     TimerManagerConfig timer;
     ServoConfig servo;
+    /* Optional, board-specific servo command calibration (0=legacy map).
+     * Profile is copied into Servo at initialization, never read via pointer. */
+    ServoCalibrationPoint servo_calibration[SERVO_MAX_CALIBRATION_POINTS];
+    uint8_t servo_calibration_count;
     StepMotorPin stepper_pins[4];
     StepMotorDelayMs stepper_delay;
     StepMotorMode stepper_mode;
