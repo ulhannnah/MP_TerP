@@ -58,4 +58,14 @@ python sim/selftest.py
 7. 보드에서 PWM·Echo·I2C·ADC·모터·LCD 동작 순차 검증
 
 **주의:** 현재는 MCU용 전체 S32DS 빌드, 보드 실기기 검증, Pin MUX 확정, 전력/실행 성능 측정이 완료되지 않았습니다. `main_example.c`는 `MP_TERP_USE_EXAMPLE_MAIN`을 정의했을 때만 `main`을 제공하며 사용자 보드 설정 함수가 필요합니다. 실제 발사체나 고전력 장치를 제어하지 않습니다.
-\n## 보드 단계별 실행 메인 (2026-11-24)\n\n기존 `src/main.c`는 주변장치를 건드리지 않는 기본 Smoke Test로 유지한다. `src/main_stage.c`는 `MP_TERP_STAGE_MAIN` 및 `MP_TERP_STAGE=1..5` 심볼로 선택할 수 있다. Stage 1=Tick, Stage 2=Servo, Stage 3=고정 초음파, Stage 4=가상 Echo+실제 C App, Stage 5=전체 보드 연동(실제 각도 결합 확인 필요). 실물 핀맵 확인 전에는 `src/board_config_user_template.c`가 초기화 실패로 안전하게 차단한다.\n\n**중요:** 현재 초음파 센서와 서보가 따로 고정되어 있으므로 서보 각도를 초음파 관측 방향으로 사용하면 안 된다. 실제 센서 방향을 확인하지 않은 상태에서 Stage 5를 활성화하지 않는다.\n
+\n## 보드 전체 주변장치 동시 점검 메인 (2026-11-25)
+
+실물에서는 초음파와 서보가 별도로 고정되어 있어 자동으로 2D 스캔 각도가 연결되지 않는다. 따라서 실제 전체 연결을 한 번에 시험할 때는 **`src/main_all_test.c`**의 독립 주변장치 점검 모드를 사용한다. Clock/LPIT, Servo, Ultrasonic, ADC, OLED, LCD, LED, 버튼, Stepper를 단일 펌웨어에서 구동·관찰하지만, 서보·Stepper는 안전을 위해 초기 자동 이동하지 않는다.
+
+S32DS 심볼: `MP_TERP_ALL_TEST_MAIN`, `MP_TERP_USE_BOARD_CONFIG_TEMPLATE`. 실물 핀·전압·채널·LCD 초기화를 검증한 후에만 `MP_TERP_CONFIRM_PINMAP`를 추가하고 실제 보드 설정 함수를 완성한다. 설정이 불명확하면 주변장치 초기화 전 안전 정지한다.
+
+[전체 주변장치 동시 테스트 상세 가이드](docs/20261125_S32K144_전체_주변장치_동시테스트.md)
+
+**이 모드는 실제 기기 조작 전 코드 준비 상태이며, 아직 실물 핀맵/신규 S32DS 빌드 PASS가 없다.** 물리적으로 잘못된 레이더 방위 추정을 피하기 위해 2D 표적 추적은 별도로 유지한다.
+
+## 보드 단계별 실행 메인 (2026-11-24)\n\n기존 `src/main.c`는 주변장치를 건드리지 않는 기본 Smoke Test로 유지한다. `src/main_stage.c`는 `MP_TERP_STAGE_MAIN` 및 `MP_TERP_STAGE=1..5` 심볼로 선택할 수 있다. Stage 1=Tick, Stage 2=Servo, Stage 3=고정 초음파, Stage 4=가상 Echo+실제 C App, Stage 5=전체 보드 연동(실제 각도 결합 확인 필요). 실물 핀맵 확인 전에는 `src/board_config_user_template.c`가 초기화 실패로 안전하게 차단한다.\n\n**중요:** 현재 초음파 센서와 서보가 따로 고정되어 있으므로 서보 각도를 초음파 관측 방향으로 사용하면 안 된다. 실제 센서 방향을 확인하지 않은 상태에서 Stage 5를 활성화하지 않는다.\n
