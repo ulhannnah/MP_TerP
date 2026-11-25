@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="640" viewBox="0 0 1024 640" role="img" aria-label="현재 구성: 초음파 센서와 서보 모터가 따로 고정되어 서보 각도와 측정 방향이 연결되지 않는다">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFFCF8"/><stop offset="1" stop-color="#F9F0EA"/></linearGradient>
+ <linearGradient id="h" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#E59B3F"/><stop offset="1" stop-color="#BD6C22"/></linearGradient>
+ <linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4E77B3"/><stop offset="1" stop-color="#284F96"/></linearGradient>
+ <radialGradient id="beam"><stop stop-color="#F59E0B" stop-opacity=".30"/><stop offset="1" stop-color="#F59E0B" stop-opacity="0"/></radialGradient>
+ <marker id="tip" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6" fill="none" stroke="#2E66B2" stroke-width="2"/></marker>
+</defs>
+<rect width="1024" height="640" fill="url(#bg)"/>
+<rect x="22" y="20" width="980" height="600" rx="28" fill="#FFF" stroke="#F0E1D6" stroke-width="2"/>
+<rect x="48" y="48" width="178" height="32" rx="16" fill="#FFEDD5"/><text x="137" y="70" font-family="Arial,'Noto Sans KR',sans-serif" font-size="15" font-weight="700" text-anchor="middle" fill="#9A5719">AS BUILT</text>
+<text x="48" y="127" font-family="Arial,'Noto Sans KR',sans-serif" font-size="31" font-weight="700" fill="#30263D">현재 장착 · 독립형 구조</text>
+<text x="48" y="165" font-family="Arial,'Noto Sans KR',sans-serif" font-size="19" fill="#736C6A">고정 초음파 센서와 회전 서보가 기계적으로 결합되지 않음</text>
+<rect x="55" y="206" width="425" height="321" rx="19" fill="#FFFAF2" stroke="#F1D8B4" stroke-width="2"/>
+<rect x="544" y="206" width="425" height="321" rx="19" fill="#F8FBFF" stroke="#D8E4F4" stroke-width="2"/>
+<text x="267" y="247" font-family="Arial,'Noto Sans KR',sans-serif" text-anchor="middle" font-size="20" font-weight="700" fill="#945512">초음파 센서 · 고정 방향</text>
+<text x="756" y="247" font-family="Arial,'Noto Sans KR',sans-serif" text-anchor="middle" font-size="20" font-weight="700" fill="#245493">서보 모터 · 독립 회전</text>
+<path d="M263 344 L139 272 Q264 139 392 272 Z" fill="url(#beam)"/><path d="M263 312 V271" stroke="#F2A037" stroke-width="3" stroke-dasharray="7 6"/>
+<rect x="155" y="338" width="220" height="86" rx="11" fill="url(#h)" stroke="#A25B1B" stroke-width="3"/>
+<circle cx="216" cy="381" r="33" fill="#DDE7EB" stroke="#738390" stroke-width="5"/><circle cx="216" cy="381" r="24" fill="#BDCCD4" stroke="#899CAA" stroke-width="2"/>
+<circle cx="314" cy="381" r="33" fill="#DDE7EB" stroke="#738390" stroke-width="5"/><circle cx="314" cy="381" r="24" fill="#BDCCD4" stroke="#899CAA" stroke-width="2"/>
+<rect x="244" y="424" width="42" height="47" fill="#8C7359"/><rect x="186" y="471" width="158" height="16" rx="8" fill="#AAA7A5"/>
+<path d="M716 319 A57 57 0 1 1 804 350" stroke="#3075BD" stroke-width="5" fill="none" marker-end="url(#tip)"/>
+<circle cx="761" cy="354" r="28" fill="#DCE8F6" stroke="#5379B1" stroke-width="4"/>
+<path d="M761 354 L792 333" stroke="#5379B1" stroke-width="11" stroke-linecap="round"/>
+<rect x="693" y="387" width="138" height="106" rx="16" fill="url(#s)" stroke="#20457B" stroke-width="3"/>
+<rect x="713" y="433" width="98" height="33" rx="8" fill="#F2F7FD"/>
+<text x="762" y="455" text-anchor="middle" font-family="Arial,sans-serif" font-size="20" font-weight="700" fill="#28559C">SG90</text>
+<rect x="497" y="300" width="30" height="105" rx="13" fill="#FFF1F2" stroke="#FB7185" stroke-dasharray="6 5" stroke-width="2"/>
+<path d="M503 337 L521 363 M521 337 L503 363" stroke="#E11D48" stroke-width="4" stroke-linecap="round"/>
+<rect x="226" y="555" width="572" height="48" rx="22" fill="#FFF1F2"/><text x="512" y="585" text-anchor="middle" font-family="Arial,'Noto Sans KR',sans-serif" font-size="20" font-weight="700" fill="#9F1239">서보 각도 ≠ 초음파 측정 방향</text>
+</svg>
