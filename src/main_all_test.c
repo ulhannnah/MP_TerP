@@ -28,6 +28,7 @@
 #include "board_system.h"
 #include "clocks_and_modes.h"
 #include "oled.h"
+#include "mp_irq_compat.h"
 
 extern bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg);
 extern bool MP_TERP_AllTestLCDInit(void);
@@ -35,6 +36,10 @@ extern bool MP_TERP_AllTestLCDInit(void);
 volatile uint32_t g_all_pinmap_confirm; /* 0x50494E53 after verifying external wiring */
 volatile uint32_t g_all_state;        /* 0 boot, 1 ready, 2 running, 0xDEAD failure */
 volatile uint32_t g_all_error;
+volatile uint32_t g_all_boot_stage;
+volatile uint32_t g_all_wdog_cs_before;
+volatile uint32_t g_all_wdog_cs_after;
+volatile uint32_t g_all_exception_number;
 volatile uint32_t g_all_tick_ms;
 volatile uint32_t g_all_echo_samples;
 volatile uint32_t g_all_echo_valid;
@@ -69,6 +74,54 @@ static void fail(uint32_t code)
 {
     g_all_error=code;
     g_all_state=0xDEADu;
+}
+
+/* Bench only: disable WDOG before clock changes. Preserve the prior
+ * interrupt mask. A locked configuration is reported rather than ignored.
+ * The default S32K144 CMD32EN mode uses the NXP 32-bit unlock sequence.
+ */
+static bool bench_wdog_disable(void)
+{
+    uint32_t mask=MP_IrqSave();
+    g_all_wdog_cs_before=WDOG->CS;
+    if((WDOG->CS & WDOG_CS_EN_MASK)!=0u) {
+        if((WDOG->CS & WDOG_CS_CMD32EN_MASK)!=0u) {
+            WDOG->CNT=0xD928C520u;
+        } else {
+            volatile uint16_t *cnt=(volatile uint16_t *)&WDOG->CNT;
+            *cnt=0xC520u;
+            *cnt=0xD928u;
+        }
+        for(uint32_t i=0u;i<10000u;i++) {
+            if((WDOG->CS & WDOG_CS_ULK_MASK)!=0u)break;
+        }
+        if((WDOG->CS & WDOG_CS_ULK_MASK)!=0u) {
+            WDOG->TOVAL=0xFFFFu;
+            WDOG->CS=0x2100u;
+            for(uint32_t i=0u;i<10000u;i++) {
+                if((WDOG->CS & WDOG_CS_RCS_MASK)!=0u)break;
+            }
+        }
+    }
+    g_all_wdog_cs_after=WDOG->CS;
+    bool ok=(g_all_wdog_cs_after & WDOG_CS_EN_MASK)==0u;
+    MP_IrqRestore(mask);
+    return ok;
+}
+
+/* Capture an unexpected watchdog interrupt; never return into an IRQ storm.
+ * No external IO is authorized during the initial bench stage.
+ */
+void WDOG_EWM_IRQHandler(void)
+{
+#if defined(__arm__) || defined(__thumb__)
+    uint32_t ipsr;
+    __asm volatile ("mrs %0, ipsr" : "=r"(ipsr));
+    g_all_exception_number=ipsr;
+#endif
+    g_all_wdog_cs_after=WDOG->CS;
+    fail(91u);
+    for(;;){}
 }
 
 /* S32DS project's ACTUAL FTM channel-pair IRQ must forward here.
@@ -151,6 +204,13 @@ int main(void)
     uint32_t last_echo=0u,last_display=0u,last_led=0u;
     g_all_state=0u;
     g_all_error=0u;
+    g_all_boot_stage=1u;
+    g_all_pinmap_confirm=0u;
+    if(!bench_wdog_disable()) {
+        fail(90u);
+        for(;;){}
+    }
+    g_all_boot_stage=2u;
 #ifndef MP_TERP_CONFIRM_PINMAP
     /* Do not access peripherals until the actual board wiring is verified. */
     fail(3u);
@@ -158,9 +218,13 @@ int main(void)
     if(!MP_TERP_GetBoardConfig(&s_cfg))fail(1u);
     else if(!validate_mapping())fail(2u);
     else {
+        g_all_boot_stage=3u;
         SOSC_init_8MHz();
+        g_all_boot_stage=4u;
         SPLL_init_160MHz();
+        g_all_boot_stage=5u;
         NormalRUNmode_80MHz();
+        g_all_boot_stage=6u;
         if(TimerManager_Init(&s_cfg.timer)!=TIMER_OK)fail(10u);
         else if(!GpioOutput_Init(&s_led,&s_cfg.led_gpio))fail(11u);
         else if(!GpioButton_Init(&s_button,&s_cfg.button_gpio))fail(12u);
@@ -171,6 +235,7 @@ int main(void)
              * Suspend, set g_all_pinmap_confirm=0x50494E53, resume.
              */
             uint32_t last=TimerManager_GetTickMs();
+            g_all_boot_stage=7u;
             g_all_state=3u;
             while(g_all_pinmap_confirm!=0x50494E53u) {
                 uint32_t now=TimerManager_GetTickMs();
@@ -187,6 +252,7 @@ int main(void)
                     ++g_all_heartbeat;
                 }
             }
+            g_all_boot_stage=8u;
             g_all_state=0u;
             g_all_pinmap_confirm=0u;
             if(StepMotor_Init(&s_step_motor,s_cfg.stepper_pins,
@@ -210,6 +276,7 @@ int main(void)
                 g_all_stepper_request_mdeg=0;
                 g_all_stepper_applied_mdeg=0;
                 s_adc_pending=0u;s_led_on=0u;
+                g_all_boot_stage=9u;
                 g_all_state=1u;
             }
         }
