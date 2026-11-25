@@ -17,10 +17,21 @@
 #endif
 /* Bench profile selected by request. Actual wiring is NOT certified.
  * Keep external loads disconnected until the documented pinout and voltage
- * are checked. Runtime debugger authorization is required before external IO.
+ * are checked. Select each verified device below before building.
  */
 #ifndef MP_TERP_CONFIRM_PINMAP
 #define MP_TERP_CONFIRM_PINMAP
 #endif
+/* 1 = enable this peripheral, 0 = leave it untouched.
+ * Default: EVB onboard devices only. Verify external wiring before enabling.
+ */
+#define TEST_LED          1
+#define TEST_ADC          1
+#define TEST_BUTTON       1
+#define TEST_OLED         0
+#define TEST_LCD          0
+#define TEST_ULTRASONIC   0
+#define TEST_SERVO        0
+#define TEST_STEPPER      0
 #endif
 #endif
