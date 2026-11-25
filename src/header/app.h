@@ -42,7 +42,18 @@ typedef struct {
     uint32_t oled_period_ms,lcd_period_ms;
     uint32_t aim_max_age_ms,aim_tolerance_mdeg;
     uint32_t simulation_ms,button_debounce_ms;
+    /* Opt-in: capture target angle at request time, only indicate after aim.
+     * Defaults to 0 for older virtual/legacy tests. */
+    uint8_t fire_snapshot_mode;
+    uint32_t fire_aim_timeout_ms;
 } AppConfig;
+
+typedef enum {
+    APP_FIRE_IDLE=0,
+    APP_FIRE_AIMING=1,
+    APP_FIRE_INDICATING=2,
+    APP_FIRE_TIMED_OUT=3
+} AppFireState;
 
 typedef struct {
     AppConfig config;
@@ -54,6 +65,10 @@ typedef struct {
     LcdStatus lcd;
     Launcher launcher;
     uint32_t last_oled_ms,last_lcd_ms;
+    AppFireState fire_state;
+    int32_t fire_snapshot_angle_mdeg;
+    uint32_t fire_requested_at_ms;
+    uint8_t fire_snapshot_id;
     uint8_t initialized;
 } App;
 
