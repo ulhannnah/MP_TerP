@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="640" viewBox="0 0 1024 640" role="img" aria-label="목표 구성: 초음파 센서가 서보 위에 장착되어 함께 회전한다">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F8FBFF"/><stop offset="1" stop-color="#EDF6FF"/></linearGradient>
+  <linearGradient id="housing" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#3D77DE"/><stop offset="1" stop-color="#214EA7"/></linearGradient>
+  <linearGradient id="sonar" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#1B8F9D"/><stop offset="1" stop-color="#126673"/></linearGradient>
+  <radialGradient id="beam"><stop stop-color="#38BDF8" stop-opacity=".32"/><stop offset="1" stop-color="#38BDF8" stop-opacity="0"/></radialGradient>
+  <marker id="tip" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6" fill="none" stroke="#1E40AF" stroke-width="2"/></marker>
+</defs>
+<rect width="1024" height="640" fill="url(#bg)"/>
+<rect x="22" y="20" width="980" height="600" rx="28" fill="#FFF" stroke="#DDE8F4" stroke-width="2"/>
+<rect x="48" y="48" width="128" height="32" rx="16" fill="#DBEAFE"/><text x="112" y="70" font-family="Arial,'Noto Sans KR',sans-serif" font-size="15" font-weight="700" text-anchor="middle" fill="#1D4ED8">GOAL</text>
+<text x="48" y="127" font-family="Arial,'Noto Sans KR',sans-serif" font-size="31" font-weight="700" fill="#152842">원래 목표 · 일체형 스캔 구조</text>
+<text x="48" y="165" font-family="Arial,'Noto Sans KR',sans-serif" font-size="19" fill="#60748B">초음파 센서를 서보 혼에 결합하여 같은 방향으로 회전</text>
+<path d="M490 332 L310 197 Q490 -38 675 197 Z" fill="url(#beam)"/>
+<path d="M315 213 Q490 14 673 213" stroke="#38BDF8" stroke-width="3" fill="none" stroke-dasharray="10 9" opacity=".85"/>
+<path d="M490 240 L490 58" stroke="#38BDF8" stroke-width="3" stroke-dasharray="6 8" opacity=".8"/>
+<g transform="translate(0 4)">
+<rect x="356" y="235" width="272" height="118" rx="14" fill="url(#sonar)" stroke="#0B4E5A" stroke-width="3"/>
+<rect x="374" y="249" width="236" height="90" rx="8" fill="#4AB6BD" opacity=".23"/>
+<circle cx="419" cy="293" r="45" fill="#DDE6EA" stroke="#526879" stroke-width="6"/>
+<circle cx="419" cy="293" r="34" fill="#B9C9D2" stroke="#8499A6" stroke-width="3"/><circle cx="419" cy="293" r="23" fill="#D3DEE3" stroke="#9DACB4" stroke-width="2"/>
+<circle cx="565" cy="293" r="45" fill="#DDE6EA" stroke="#526879" stroke-width="6"/>
+<circle cx="565" cy="293" r="34" fill="#B9C9D2" stroke="#8499A6" stroke-width="3"/><circle cx="565" cy="293" r="23" fill="#D3DEE3" stroke="#9DACB4" stroke-width="2"/>
+<rect x="470" y="332" width="45" height="33" rx="5" fill="#374151"/>
+<circle cx="492" cy="368" r="19" fill="#E9EDF3" stroke="#8093A8" stroke-width="3"/>
+<path d="M492 368 V420" stroke="#657B95" stroke-width="13" stroke-linecap="round"/>
+<rect x="423" y="412" width="138" height="105" rx="17" fill="url(#housing)" stroke="#163E8A" stroke-width="3"/>
+<rect x="411" y="432" width="162" height="24" rx="8" fill="#315CB7" opacity=".8"/>
+<rect x="444" y="457" width="96" height="31" rx="7" fill="#F5F9FF"/>
+<text x="492" y="478" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#2250A1">SG90</text>
+<circle cx="492" cy="424" r="8" fill="#C7D8E9"/>
+</g>
+<path d="M315 420 C280 385 281 309 323 277" stroke="#1D4ED8" stroke-width="5" fill="none" marker-end="url(#tip)" stroke-linecap="round"/>
+<path d="M678 275 C721 320 706 389 671 412" stroke="#1D4ED8" stroke-width="5" fill="none" marker-end="url(#tip)" stroke-linecap="round"/>
+<line x1="657" y1="296" x2="796" y2="268" stroke="#86A3B8" stroke-width="2"/><circle cx="657" cy="296" r="5" fill="#86A3B8"/>
+<text x="802" y="264" font-family="Arial,'Noto Sans KR',sans-serif" font-size="19" font-weight="700" fill="#21455B">HC-SR04</text>
+<text x="802" y="290" font-family="Arial,'Noto Sans KR',sans-serif" font-size="16" fill="#64748B">초음파 송수신</text>
+<line x1="571" y1="466" x2="775" y2="446" stroke="#86A3B8" stroke-width="2"/><circle cx="571" cy="466" r="5" fill="#86A3B8"/>
+<text x="783" y="441" font-family="Arial,'Noto Sans KR',sans-serif" font-size="19" font-weight="700" fill="#21455B">SG90</text>
+<text x="783" y="466" font-family="Arial,'Noto Sans KR',sans-serif" font-size="16" fill="#64748B">회전 구동</text>
+<rect x="290" y="551" width="445" height="49" rx="22" fill="#DBEAFE"/><text x="512" y="582" text-anchor="middle" font-family="Arial,'Noto Sans KR',sans-serif" font-size="20" font-weight="700" fill="#1E40AF">서보 각도 = 초음파 측정 방향</text>
+</svg>
