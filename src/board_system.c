@@ -108,10 +108,16 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
     return true;
 }
 void BoardSystem_Update(BoardSystem *b){
+    uint32_t now;
     if(!b||!b->initialized)return;
+    now=TimerManager_GetTickMs();
     if(b->config.use_gpio_button && GpioButton_TakePress(&b->button))
-        App_RequestFire(&b->app,TimerManager_GetTickMs());
-    App_Update(&b->app,TimerManager_GetTickMs());
+        App_RequestFire(&b->app,now);
+    App_Update(&b->app,now);
+    /* App may queue the latest status text. Emit at most one GPIO edge
+     * step, returning immediately to the scan/tracker main loop. */
+    if(b->config.lcd_service)
+        b->config.lcd_service(b->config.user,TimerManager_GetTickMs());
 }
 void BoardSystem_OnEchoCaptureIrq(BoardSystem *b){
     if(b&&b->initialized)UltrasonicPort_OnCaptureIrq(&b->ultrasonic);
