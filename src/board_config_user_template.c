@@ -1,56 +1,88 @@
-/*
- * Editable hardware mapping scaffold.
- *
- * Enabled ONLY with MP_TERP_USE_BOARD_CONFIG_TEMPLATE.
- * Must be filled from actual MCU board schematic and connector wiring.
- * Unconfigured mapping returns false: no board peripherals are enabled.
+/* Provisional EVB-Q100 bench profile. Verify actual shield wiring first.
+ * Enable MP_TERP_USE_BOARD_CONFIG_TEMPLATE and MP_TERP_CONFIRM_PINMAP.
+ * Independent peripheral test only. No automatic tracking or motor sweep.
  */
 #if defined(MP_TERP_USE_BOARD_CONFIG_TEMPLATE) && (defined(MP_TERP_ALL_TEST_MAIN) || (defined(MP_TERP_STAGE_MAIN) && MP_TERP_STAGE != 4))
 #include "board_system.h"
+#include "lcd_hd44780.h"
+#include "mp_irq_compat.h"
 #include <stddef.h>
 #include <string.h>
 
+static LCDHD44780 s_lcd;
+
+/* LPIT tick provides a deliberately conservative delay >= requested time.
+ * Foreground only; requires enabled interrupts and a working 1ms tick. */
+static void delay_ms(uint32_t ms)
+{
+    uint32_t start=TimerManager_GetTickMs();
+    while((uint32_t)(TimerManager_GetTickMs()-start)<=ms){}
+}
+static void lcd_delay_us(void *ctx,uint32_t us)
+{
+    (void)ctx;
+    delay_ms((us+999u)/1000u);
+}
+
 bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg)
 {
-    if(cfg==NULL)return false;
-    (void)memset(cfg,0,sizeof(*cfg));
-
-    /*
-     * Verify these before changing return false -> true:
-     *
-     * cfg->timer.pcc_clock_source = <verified LPIT PCS>;
-     * cfg->timer.clock_hz         = <verified functional clock in Hz>;
-     * cfg->timer.tick_channel     = TIMER_CH3; // EXAMPLE ONLY
-     *
-     * Stage 2 additionally requires:
-     * cfg->servo.ftm, channel, port, port_pcc_index, pin, pin_alt,
-     * clock_pcs, clock_hz, period_us, min/max pulse, min/max angle,
-     * initial_angle_mdeg.
-     *
-     * Stage 3 additionally requires:
-     * cfg->ultrasonic.ftm, ftm_channel, ftm_clock_pcs/hz,
-     * echo_port/pcc_index/pin/pin_alt,
-     * trigger_port/gpio/pcc_index/pin,
-     * trigger_timer_channel, trigger_us, timeout_us,
-     * minimum_echo_us, maximum_echo_us.
-     * Connect actual FTM channel-pair IRQ to
-     * MP_TERP_StageEchoCaptureIrq() using verified startup vector.
-     *
-     * Stage 5 requires all of the above and Stepper, ADC, OLED,
-     * LCD and LED board interface settings, plus mechanically verified
-     * ultrasound-direction/servo-angle coupling.
-     *
-     * Do NOT fill unknown pins with example or guessed values.
-     */
-
-    return false; /* Fail closed until the wiring is known and verified. */
+    if(!cfg)return false;
+    memset(cfg,0,sizeof(*cfg));
+#ifndef MP_TERP_CONFIRM_PINMAP
+    return false;
+#else
+    cfg->timer=(TimerManagerConfig){6u,40000000u,TIMER_CH2};
+    /* PTD10 FTM2_CH0 ALT2; separate from Echo FTM0. */
+    cfg->servo=(ServoConfig){FTM2,0u,PORTD,PCC_PORTD_INDEX,10u,2u,
+        1u,8000000u,20000u,1300u,1700u,60000,120000,90000};
+    cfg->ultrasonic=(UltrasonicPortConfig){
+        FTM0,6u,1u,8000000u,PORTE,PCC_PORTE_INDEX,8u,2u,
+        PORTB,PTB,PCC_PORTB_INDEX,8u,TIMER_CH1,10u,30000u,100u,25000u};
+    cfg->stepper_pins[0]=(StepMotorPin){PORTB,PTB,PCC_PORTB_INDEX,9u};
+    cfg->stepper_pins[1]=(StepMotorPin){PORTB,PTB,PCC_PORTB_INDEX,10u};
+    cfg->stepper_pins[2]=(StepMotorPin){PORTB,PTB,PCC_PORTB_INDEX,11u};
+    cfg->stepper_pins[3]=(StepMotorPin){PORTB,PTB,PCC_PORTB_INDEX,5u};
+    cfg->stepper_delay=delay_ms;
+    cfg->stepper_mode=STEP_MOTOR_HALF_STEP;
+    /* Provisional step count only; no motion before explicit manual home. */
+    cfg->stepper=(StepperControllerConfig){NULL,TIMER_CH0,5000u,4096u,-10000,10000};
+    cfg->adc=(ADCChannelConfig){ADC0,PCC_ADC0_INDEX,1u,12u,5000u};
+    cfg->custom_oled_port=0u; /* existing PTA2/3 ALT3 */
+    cfg->use_gpio_led=1u;
+    cfg->led_gpio=(GpioOutputConfig){PORTD,PTD,PCC_PORTD_INDEX,15u,false};
+    cfg->use_gpio_button=1u;
+    cfg->button_gpio=(GpioButtonConfig){PORTC,PTC,PCC_PORTC_INDEX,12u,false,false};
+    cfg->lcd_write=LCDHD44780_WriteLine;
+    cfg->user=&s_lcd;
+    return true;
+#endif
 }
+
 #if defined(MP_TERP_ALL_TEST_MAIN)
-/* Actual LCD driver initialization must happen after system clock setup.
- * This fail-closed placeholder must be implemented for the physical LCD. */
+extern void MP_TERP_AllTestEchoCaptureIrq(void);
+extern void MP_TERP_AllTestButtonPortIrq(void);
+
 bool MP_TERP_AllTestLCDInit(void)
 {
-    return false;
+    LCDHD44780Config cfg={0};
+    cfg.rs=(LCDPin){PORTD,PTD,PCC_PORTD_INDEX,4u};
+    cfg.enable=(LCDPin){PORTD,PTD,PCC_PORTD_INDEX,5u};
+    cfg.data[0]=(LCDPin){PORTD,PTD,PCC_PORTD_INDEX,11u};
+    cfg.data[1]=(LCDPin){PORTD,PTD,PCC_PORTD_INDEX,12u};
+    cfg.data[2]=(LCDPin){PORTD,PTD,PCC_PORTD_INDEX,13u};
+    cfg.data[3]=(LCDPin){PORTD,PTD,PCC_PORTD_INDEX,14u};
+    cfg.columns=16u;cfg.rows=2u;cfg.delay_us=lcd_delay_us;
+    if(!LCDHD44780_Init(&s_lcd,&cfg))return false;
+    MP_NvicClearPending(FTM0_Ch6_Ch7_IRQn);
+    MP_NvicClearPending(PORTC_IRQn);
+    MP_NvicEnable(FTM0_Ch6_Ch7_IRQn);
+    MP_NvicEnable(PORTC_IRQn);
+    return true;
 }
+void FTM0_Ch6_Ch7_IRQHandler(void){MP_TERP_AllTestEchoCaptureIrq();}
+void PORTC_IRQHandler(void){MP_TERP_AllTestButtonPortIrq();}
+#elif MP_TERP_STAGE == 3
+extern void MP_TERP_StageEchoCaptureIrq(void);
+void FTM0_Ch6_Ch7_IRQHandler(void){MP_TERP_StageEchoCaptureIrq();}
 #endif
 #endif
