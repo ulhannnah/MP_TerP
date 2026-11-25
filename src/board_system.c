@@ -71,6 +71,9 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
     /* Real homing is not automatic. Board commissioning must confirm
      * the reference, then call StepperController_SetHome() explicitly. */
     if(Servo_Init(&b->servo,&cfg->servo)!=SERVO_OK)return false;
+    if(cfg->servo_calibration_count!=0u &&
+       Servo_SetCalibration(&b->servo,cfg->servo_calibration,
+                            cfg->servo_calibration_count)!=SERVO_OK)return false;
     if(!UltrasonicPort_Init(&b->ultrasonic,&cfg->ultrasonic))return false;
     if(cfg->custom_oled_port && !OLED_PortConfigure(&cfg->oled_port))return false;
     if(OLED_Init()!=0)return false;
