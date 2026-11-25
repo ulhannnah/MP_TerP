@@ -74,12 +74,7 @@ bool MP_TERP_AllTestLCDInit(void)
     cfg.data[2]=(LCDPin){PORTD,PTD,PCC_PORTD_INDEX,13u};
     cfg.data[3]=(LCDPin){PORTD,PTD,PCC_PORTD_INDEX,14u};
     cfg.columns=16u;cfg.rows=2u;cfg.delay_us=lcd_delay_us;
-    if(!LCDHD44780_Init(&s_lcd,&cfg))return false;
-    MP_NvicClearPending(FTM0_Ch6_Ch7_IRQn);
-    MP_NvicClearPending(PORTC_IRQn);
-    MP_NvicEnable(FTM0_Ch6_Ch7_IRQn);
-    MP_NvicEnable(PORTC_IRQn);
-    return true;
+    return LCDHD44780_Init(&s_lcd,&cfg);
 }
 void FTM0_Ch6_Ch7_IRQHandler(void){MP_TERP_AllTestEchoCaptureIrq();}
 void PORTC_IRQHandler(void){MP_TERP_AllTestButtonPortIrq();}
