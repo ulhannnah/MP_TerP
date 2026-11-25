@@ -1,3 +1,5 @@
+#include "project_config.h"
+
 /* Provisional EVB-Q100 bench profile. Verify actual shield wiring first.
  * Enable MP_TERP_USE_BOARD_CONFIG_TEMPLATE and MP_TERP_CONFIRM_PINMAP.
  * Independent peripheral test only. No automatic tracking or motor sweep.
