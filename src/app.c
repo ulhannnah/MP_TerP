@@ -37,7 +37,8 @@ bool App_Init(App *app,const AppConfig *cfg,uint32_t now){
        !cfg->hw.echo_take||!cfg->hw.aim_move||!cfg->hw.adc_read||
        !cfg->hw.aim_position||!cfg->hw.led_write||
        cfg->oled_period_ms==0u||cfg->lcd_period_ms==0u||
-       cfg->aim_tolerance_mdeg<0||cfg->maximum_display_distance_mm==0u)
+       cfg->aim_tolerance_mdeg<0||cfg->maximum_display_distance_mm==0u||
+       (cfg->fire_snapshot_mode!=0u && cfg->fire_aim_timeout_ms==0u))
         return false;
     operating_limit = cfg->operating_target_limit == 0u ? 3u : cfg->operating_target_limit;
     if(operating_limit > TRACKER_MAX_TARGETS)return false;
@@ -75,6 +76,10 @@ bool App_Init(App *app,const AppConfig *cfg,uint32_t now){
     launcher.active_ms=cfg->simulation_ms;launcher.debounce_ms=cfg->button_debounce_ms;
     if(!Launcher_Init(&app->launcher,&launcher))return false;
     app->last_oled_ms=now;app->last_lcd_ms=now;
+    app->fire_state=APP_FIRE_IDLE;
+    app->fire_snapshot_id=0u;
+    app->fire_snapshot_angle_mdeg=0;
+    app->fire_requested_at_ms=0u;
     RadarProcessing_RequestCalibration(&app->processing);
     if(!RadarScan_Start(&app->scan,now))return false;
     app->initialized=1u;
@@ -101,7 +106,10 @@ void App_Update(App *app,uint32_t now){
         (void)TargetSelector_Update(&app->selector,raw);
     id=TargetSelector_GetId(&app->selector);
     if(app->aim.selected_id!=id)AimController_Select(&app->aim,id);
-    AimController_Update(&app->aim,&app->processing.tracker,now);
+    /* Snapshot mode never silently retargets while moving to a captured
+     * button-time angle. Legacy mode preserves continuous tracking. */
+    if(app->config.fire_snapshot_mode==0u)
+        AimController_Update(&app->aim,&app->processing.tracker,now);
     valid=TargetTracker_Get(&app->processing.tracker,id,&selected) &&
           selected.state!=TARGET_LOST &&
           (uint32_t)(now-selected.last_seen_ms)<=app->config.aim_max_age_ms;
@@ -115,7 +123,36 @@ void App_Update(App *app,uint32_t now){
         }
     }
     if(!valid)label="LOST/NO TARGET";
-    Launcher_Update(&app->launcher,now,valid,aimed);
+    if(app->config.fire_snapshot_mode==0u) {
+        Launcher_Update(&app->launcher,now,valid,aimed);
+    } else {
+        if(app->fire_state==APP_FIRE_AIMING) {
+            if((uint32_t)(now-app->fire_requested_at_ms) >=
+               app->config.fire_aim_timeout_ms) {
+                /* Never indicate a timeout as an achieved aim. The open-loop
+                 * Stepper may still be moving; no physical STOP is inferred. */
+                app->fire_state=APP_FIRE_TIMED_OUT;
+            } else {
+                int32_t actual=0;
+                bool still_moving=true;
+                if(app->config.hw.aim_position(app->config.hw.context,
+                                                &actual,&still_moving)) {
+                    int64_t error=(int64_t)actual-app->fire_snapshot_angle_mdeg;
+                    if(error<0)error=-error;
+                    if(!still_moving && error<=app->config.aim_tolerance_mdeg) {
+                        Launcher_Request(&app->launcher,now);
+                        Launcher_Update(&app->launcher,now,true,true);
+                        app->fire_state=APP_FIRE_INDICATING;
+                    }
+                }
+            }
+        }
+        /* Keep the LED pulse's expiry active independently of target changes. */
+        Launcher_Update(&app->launcher,now,false,false);
+        if(app->fire_state==APP_FIRE_INDICATING &&
+           !Launcher_IsActive(&app->launcher))
+            app->fire_state=APP_FIRE_IDLE;
+    }
     if(app->config.hw.oled_flush &&
        (uint32_t)(now-app->last_oled_ms)>=app->config.oled_period_ms){
         app->last_oled_ms=now;
@@ -131,7 +168,30 @@ void App_Update(App *app,uint32_t now){
     }
 }
 void App_RequestFire(App *app,uint32_t now){
-    if(app&&app->initialized)Launcher_Request(&app->launcher,now);
+    RadarTarget target;
+    uint8_t id;
+    if(!app||!app->initialized)return;
+    if(app->config.fire_snapshot_mode==0u) {
+        Launcher_Request(&app->launcher,now);
+        return;
+    }
+    if(app->fire_state==APP_FIRE_TIMED_OUT)app->fire_state=APP_FIRE_IDLE;
+    if(app->fire_state!=APP_FIRE_IDLE || Launcher_IsActive(&app->launcher))return;
+    id=TargetSelector_GetId(&app->selector);
+    if(!TargetTracker_Get(&app->processing.tracker,id,&target) ||
+       target.state==TARGET_LOST || target.state==TARGET_EMPTY ||
+       (uint32_t)(now-target.last_seen_ms)>app->config.aim_max_age_ms ||
+       target.angle_mdeg<app->config.minimum_scan_angle_mdeg ||
+       target.angle_mdeg>app->config.maximum_scan_angle_mdeg)
+        return;
+    /* Only a valid, fresh target may initiate motion; capture this exact
+     * command value before any later tracker updates. */
+    if(!app->config.hw.aim_move(app->config.hw.context,target.angle_mdeg))
+        return;
+    app->fire_snapshot_id=id;
+    app->fire_snapshot_angle_mdeg=target.angle_mdeg;
+    app->fire_requested_at_ms=now;
+    app->fire_state=APP_FIRE_AIMING;
 }
 void App_RequestBackgroundCalibration(App *app){
     if(app&&app->initialized)RadarProcessing_RequestCalibration(&app->processing);
