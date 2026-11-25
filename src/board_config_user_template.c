@@ -75,6 +75,9 @@ bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg)
     /* Stage 5 only: no auto-sweep in the default ALL_TEST firmware.
      * Requires physically coupled scan direction and explicit Stepper home. */
     cfg->application=MP_TERP_Radar120Profile();
+    /* Manually align the Stepper with the radar's 90-degree center before
+     * confirming home in Stage 5. No homing sensor is available. */
+    cfg->aiming_scan_center_mdeg=90000;
 #endif
     return true;
 #endif
