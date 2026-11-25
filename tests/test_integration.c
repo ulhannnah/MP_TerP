@@ -10,6 +10,7 @@
 #include "radar_renderer.h"
 #include "oled.h"
 #include "app.h"
+#include "app_profile.h"
 
 static unsigned pixel_count,draw_count,task_count,lcd_writes,led_changes;
 static bool led_on;
@@ -44,8 +45,12 @@ static bool echo_take(void *ctx,uint32_t *dist,bool *valid){
     echo_pending=false;*dist=mock_range;*valid=true;return true;
 }
 static bool adc_read(void *ctx,uint16_t *raw){(void)ctx;*raw=0u;return true;}
-static bool aim_move(void *ctx,int32_t a){(void)ctx;(void)a;return true;}
-static bool aim_pos(void *ctx,int32_t *a,bool *m){(void)ctx;*a=0;*m=false;return true;}
+static int32_t requested_aim_angle,reported_aim_angle;
+static bool reported_aim_moving;
+static bool aim_move(void *ctx,int32_t a){(void)ctx;requested_aim_angle=a;return true;}
+static bool aim_pos(void *ctx,int32_t *a,bool *m){
+    (void)ctx;*a=reported_aim_angle;*m=reported_aim_moving;return true;
+}
 static void test_frames(void){
     RadarFrame f;RadarSample s={0,1000u,0u,true};
     assert(RadarFrame_Init(&f,0,120000,50000));
@@ -156,8 +161,64 @@ static void test_app(void){
     cfg.operating_target_limit=6u;
     assert(!App_Init(&app,&cfg,0u));
 }
+static void test_snapshot_aim(void){
+    static App app;
+    AppConfig cfg=MP_TERP_Radar120Profile();
+    RadarTarget *target;
+    cfg.hw.servo_set_angle=move;
+    cfg.hw.echo_start=echo_start;
+    cfg.hw.echo_take=echo_take;
+    cfg.hw.adc_read=adc_read;
+    cfg.hw.aim_move=aim_move;
+    cfg.hw.aim_position=aim_pos;
+    cfg.hw.led_write=led_write;
+    assert(cfg.fire_snapshot_mode==1u && cfg.fire_aim_timeout_ms>0u);
+    assert(App_Init(&app,&cfg,0u));
+    target=&app.processing.tracker.targets[0u];
+    target->state=TARGET_TRACKING;
+    target->id=1u;
+    target->angle_mdeg=60000;
+    target->range_mm=1000u;
+    target->last_seen_ms=500u;
+    requested_aim_angle=0;
+    reported_aim_angle=0;
+    reported_aim_moving=true;
+    App_RequestFire(&app,600u);
+    assert(app.fire_state==APP_FIRE_AIMING);
+    assert(app.fire_snapshot_id==1u);
+    assert(app.fire_snapshot_angle_mdeg==60000);
+    assert(requested_aim_angle==60000);
+    /* The live target may move while the snapshot aiming motion is ongoing. */
+    target->angle_mdeg=120000;
+    target->last_seen_ms=650u;
+    App_Update(&app,700u);
+    assert(app.fire_state==APP_FIRE_AIMING);
+    assert(requested_aim_angle==60000 && !led_on);
+    reported_aim_angle=60000;
+    reported_aim_moving=false;
+    App_Update(&app,710u);
+    assert(app.fire_state==APP_FIRE_INDICATING);
+    assert(Launcher_IsActive(&app.launcher) && led_on);
+    App_Update(&app,1000u);
+    assert(app.fire_state==APP_FIRE_IDLE && !led_on);
+
+    /* A subsequent request cannot indicate success if the motor never arrives. */
+    target->state=TARGET_TRACKING;
+    target->angle_mdeg=90000;
+    target->last_seen_ms=1050u;
+    reported_aim_moving=true;
+    App_RequestFire(&app,1100u);
+    assert(app.fire_state==APP_FIRE_AIMING);
+    App_Update(&app,14000u);
+    assert(app.fire_state==APP_FIRE_TIMED_OUT && !led_on);
+    /* Stale data must not initiate a new motion. */
+    App_RequestFire(&app,20000u);
+    assert(app.fire_state==APP_FIRE_IDLE);
+    assert(!led_on);
+}
 int main(void){
     test_frames();test_processing();test_tasks_outputs();test_app();
-    puts("PASS: frame, per-bin processing, tracker, renderer, scheduler, LCD, LED, App");
+    test_snapshot_aim();
+    puts("PASS: frame, processing, tracker, renderer, App, frozen-angle fire FSM");
     return 0;
 }
