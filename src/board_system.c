@@ -1,6 +1,7 @@
 #include "board_system.h"
 #include "clocks_and_modes.h"
 #include "oled.h"
+#include "aim_geometry.h"
 #include <stddef.h>
 static bool servo_move(void *ctx,int32_t angle){
     BoardSystem *b=(BoardSystem *)ctx;
@@ -30,9 +31,10 @@ static bool adc_read(void *ctx,uint16_t *raw){
 }
 static bool aim_move(void *ctx,int32_t angle){
     BoardSystem *b=(BoardSystem *)ctx;
-    const int64_t relative=(int64_t)angle-b->aiming_scan_center_mdeg;
-    if(relative < INT32_MIN || relative > INT32_MAX) return false;
-    return StepperController_SetTargetAngle(&b->stepper,(int32_t)relative)==STEPPER_OK;
+    int32_t relative;
+    if(!MP_TERP_AimToStepper(angle,b->aiming_scan_center_mdeg,&relative))
+        return false;
+    return StepperController_SetTargetAngle(&b->stepper,relative)==STEPPER_OK;
 }
 static bool aim_position(void *ctx,int32_t *angle,bool *moving){
     BoardSystem *b=(BoardSystem *)ctx;
@@ -41,10 +43,7 @@ static bool aim_position(void *ctx,int32_t *angle,bool *moving){
        StepperController_GetPosition(&b->stepper,&relative,NULL,moving)!=STEPPER_OK)
         return false;
     /* Stepper position is relative; App compares absolute scan angles. */
-    const int64_t mapped=(int64_t)relative+b->aiming_scan_center_mdeg;
-    if(mapped<INT32_MIN || mapped>INT32_MAX)return false;
-    *angle=(int32_t)mapped;
-    return true;
+    return MP_TERP_StepperToAim(relative,b->aiming_scan_center_mdeg,angle);
 }
 static bool oled_flush(void *ctx){(void)ctx;return OLED_Update()==0;}
 static bool lcd_write(void *ctx,uint8_t row,const char *line){
