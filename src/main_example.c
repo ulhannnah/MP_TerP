@@ -1,3 +1,5 @@
+#include "project_config.h"
+
 /* Optional standalone entry point for S32 Design Studio.
  * Compile with MP_TERP_USE_EXAMPLE_MAIN only if the project has no other main.
  * Application owner supplies MP_TERP_GetBoardConfig(), including the board's
