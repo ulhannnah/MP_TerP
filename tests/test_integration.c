@@ -89,7 +89,7 @@ static void test_processing(void){
     RadarTarget target;
     assert(TargetTracker_Get(&p.tracker,1u,&target));
     assert(target.state==TARGET_NEW);
-    RadarRendererConfig renderer={0,120000,2000u,64u,62u,58u};
+    RadarRendererConfig renderer={0,120000,2000u,64u,62u,58u,0u};
     assert(RadarRenderer_Draw(&renderer,&p.display_frame,&p.tracker,1u,30000));
     assert(draw_count>0u);
 }
