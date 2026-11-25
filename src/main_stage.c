@@ -30,6 +30,7 @@
 #include <stdint.h>
 #include "board_system.h"
 #include "clocks_and_modes.h"
+#include "mp_irq_compat.h"
 
 /* Always visible in the S32DS debugger; no blocking serial print required. */
 volatile uint32_t g_stage_state;       /* 0 boot, 1 ready, 2 working, 0xDEAD failed */
@@ -47,6 +48,8 @@ volatile uint32_t g_stage_active_tracks;
 volatile uint32_t g_stage_selected_id;
 volatile int32_t g_stage_servo_request_mdeg; /* Stage 2: change in debugger to move */
 volatile int32_t g_stage_servo_applied_mdeg;
+volatile uint32_t g_stage_stepper_center_confirm; /* write 0x484F4D45 after physically aligning at scan center */
+volatile uint32_t g_stage_stepper_center_homed;   /* open loop, user confirmed only */
 
 static void stage_fault(uint32_t error)
 {
@@ -209,6 +212,8 @@ int main(void)
     g_stage_selected_id=0u;
     g_stage_servo_request_mdeg=0;
     g_stage_servo_applied_mdeg=0;
+    g_stage_stepper_center_confirm=0u;
+    g_stage_stepper_center_homed=0u;
 
 #if MP_TERP_STAGE == 4
     /* Synthetic bench: does not configure clocks or touch peripheral registers. */
@@ -223,8 +228,19 @@ int main(void)
     stage_fault(50u);
 #else
     if(!MP_TERP_GetBoardConfig(&s_cfg))stage_fault(51u);
+    else if(s_cfg.ultrasonic.ftm!=FTM0 || s_cfg.ultrasonic.ftm_channel!=6u ||
+            (s_cfg.use_gpio_button && s_cfg.button_gpio.port!=PORTC))
+        stage_fault(53u); /* wired IRQ handlers match only these pin resources */
     else if(!BoardSystem_Init(&s_board,&s_cfg))stage_fault(52u);
-    else g_stage_state=1u;
+    else {
+        MP_NvicClearPending(FTM0_Ch6_Ch7_IRQn);
+        MP_NvicEnable(FTM0_Ch6_Ch7_IRQn);
+        if(s_cfg.use_gpio_button) {
+            MP_NvicClearPending(PORTC_IRQn);
+            MP_NvicEnable(PORTC_IRQn);
+        }
+        g_stage_state=1u;
+    }
 #endif
 #else
     if(!init_cfg_and_clock())stage_fault(10u);
@@ -268,6 +284,15 @@ int main(void)
                 ++g_stage_active_tracks;
         }
 #elif MP_TERP_STAGE == 5
+        /* The user must first physically point the Stepper at the center
+         * of the scan FOV. This token declares relative zero, not homing motion.
+         * Do not pre-fill/auto-accept the token in production firmware. */
+        if(g_stage_stepper_center_confirm==0x484F4D45u) {
+            g_stage_stepper_center_confirm=0u;
+            if(BoardSystem_ConfirmStepperCenter(&s_board))
+                g_stage_stepper_center_homed=1u;
+            else g_stage_error=54u;
+        }
         BoardSystem_Update(&s_board);
         g_stage_tick_ms=TimerManager_GetTickMs();
         g_stage_frames=s_board.app.processing.display_frame.frame_number;
