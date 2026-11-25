@@ -8,7 +8,7 @@
  * Each selected device is initialized independently.
  *
  * All inputs/displays and both motors' driver interfaces are initialized:
- * - Servo holds its configured initial angle until debugger command.
+ * - SG90 holds center until SW3: 5-point calibration walk, once per reset.
  * - Ultrasonic measures fixed-direction distance every ~100ms.
  * - ADC potentiometer read continuously; OLED/LCD display raw diagnostics.
  * - Standalone stepper jog: one button-triggered bounded round trip per reset.
@@ -72,7 +72,9 @@ volatile int32_t g_all_stepper_request_mdeg;
 volatile int32_t g_all_stepper_applied_mdeg;
 volatile uint32_t g_all_stepper_homed;
 volatile uint32_t g_all_stepper_moving;
-volatile uint32_t g_all_servo_jog_state; /* 0 off, 1 release, 2 armed, 3 left, 4 right, 5 center, 6 done, 7 failed */
+volatile uint32_t g_all_servo_jog_state; /* 0 disabled, 1 release, 2 armed, 3..8 points/center, 9 done, 10 fail */
+volatile uint32_t g_all_servo_calibration_point_index; /* 0..4 point, 5 center-return */
+volatile uint32_t g_all_servo_pwm_us; /* most recent commanded pulse, not measured */
 volatile uint32_t g_all_sw3_presses;
 volatile uint32_t g_all_motor_test_busy; /* 0 idle, 1 stepper, 2 servo */
 volatile uint32_t g_all_stepper_jog_state; /* 0 disabled, 1 waiting release, 2 armed, 3 out, 4 dwell, 5 back, 6 done, 7 failed */
@@ -282,53 +284,74 @@ static void stepper_jog_update(uint32_t now)
 #endif
 
 #if TEST_SERVO && TEST_BUTTON
-/* Standalone unloaded SG90 only. 90 -> 40 -> 140 -> 90 degrees.
- * The 40-to-140 sweep is 100 commanded degrees, not encoder feedback.
- * No scan or sensor-to-motor coupling. */
+/* Unloaded SG90 command-angle calibration walk. One SW3 press per reset.
+ * Angles here are desired values, not motor feedback. Each segment uses the
+ * 5-point PWM table configured in board_config_user_template.c.
+ * 30 -> 60 -> 90 -> 120 -> 150 -> center 90 degrees.
+ */
+static const int32_t s_servo_calibration_walk[] = {
+    30000, 60000, 90000, 120000, 150000, 90000
+};
 static uint32_t s_servo_since,s_sw3_since;
 static bool s_sw3_sampled,s_sw3_last;
-static bool servo_jog_command(int32_t angle)
+
+static bool servo_jog_command(uint8_t index)
 {
-    if(Servo_SetAngle(&s_servo,angle)!=SERVO_OK) {
+    uint32_t pulse;
+    const int32_t angle=s_servo_calibration_walk[index];
+    if(Servo_SetAngle(&s_servo,angle)!=SERVO_OK ||
+       Servo_GetPulseUs(&s_servo,&pulse)!=SERVO_OK) {
         runtime_error(DEV_SERVO,42u);
-        g_all_servo_jog_state=7u;
+        g_all_servo_jog_state=10u;
         g_all_motor_test_busy=0u;
         return false;
     }
     g_all_servo_request_mdeg=angle;
     g_all_servo_applied_mdeg=angle;
+    g_all_servo_pwm_us=pulse;
+    g_all_servo_calibration_point_index=index;
     return true;
 }
+
 static void servo_jog_update(uint32_t now)
 {
     uint32_t state=g_all_servo_jog_state;
     bool pressed;
-    if(state==0u || state>=6u)return;
-    if(!s_button3_ready) { g_all_servo_jog_state=7u;runtime_error(DEV_SERVO,43u);return; }
+    if(state==0u || state>=9u)return;
+    if(!s_button3_ready) {
+        g_all_servo_jog_state=10u;runtime_error(DEV_SERVO,43u);return;
+    }
     pressed=((s_button3.config.gpio->PDIR>>s_button3.config.pin)&1u)!=0u;
     if(s_button3.config.active_low)pressed=!pressed;
     if(!s_sw3_sampled || pressed!=s_sw3_last) {
         s_sw3_sampled=true;s_sw3_last=pressed;s_sw3_since=now;
     }
     if(state==1u) {
-        if(!pressed && (uint32_t)(now-s_sw3_since)>=100u)g_all_servo_jog_state=2u;
-    } else if(state==2u) {
+        if(!pressed && (uint32_t)(now-s_sw3_since)>=100u)
+            g_all_servo_jog_state=2u;
+        return;
+    }
+    if(state==2u) {
         if(!pressed || (uint32_t)(now-s_sw3_since)<100u)return;
-        if(g_all_motor_test_busy!=0u) { g_all_servo_jog_state=1u;return; }
+        if(g_all_motor_test_busy!=0u) {
+            g_all_servo_jog_state=1u;return;
+        }
         g_all_motor_test_busy=2u;
-        if(servo_jog_command(TEST_SERVO_LEFT_MDEG)) {
+        if(servo_jog_command(0u)) {
             s_servo_since=now;g_all_servo_jog_state=3u;
         }
-    } else if(state==3u && (uint32_t)(now-s_servo_since)>=TEST_SERVO_HOLD_MS) {
-        if(servo_jog_command(TEST_SERVO_RIGHT_MDEG)) {
-            s_servo_since=now;g_all_servo_jog_state=4u;
-        }
-    } else if(state==4u && (uint32_t)(now-s_servo_since)>=TEST_SERVO_HOLD_MS) {
-        if(servo_jog_command(TEST_SERVO_CENTER_MDEG)) {
-            s_servo_since=now;g_all_servo_jog_state=5u;
-        }
-    } else if(state==5u && (uint32_t)(now-s_servo_since)>=TEST_SERVO_HOLD_MS) {
-        g_all_servo_jog_state=6u;g_all_motor_test_busy=0u;
+        return;
+    }
+    if((uint32_t)(now-s_servo_since)<TEST_SERVO_HOLD_MS)return;
+    if(state==8u) {
+        g_all_servo_jog_state=9u;
+        g_all_motor_test_busy=0u;
+        return;
+    }
+    /* States 3..7 correspond to completed points 0..4, respectively. */
+    if(servo_jog_command((uint8_t)(state-2u))) {
+        s_servo_since=now;
+        g_all_servo_jog_state=state+1u;
     }
 }
 #endif
@@ -426,10 +449,17 @@ int main(void)
     if(TEST_SERVO) {
         bool ok=(!TEST_ULTRASONIC || s_cfg.servo.ftm!=s_cfg.ultrasonic.ftm) &&
             Servo_Init(&s_servo,&s_cfg.servo)==SERVO_OK;
+        if(ok && s_cfg.servo_calibration_count!=0u &&
+           Servo_SetCalibration(&s_servo,s_cfg.servo_calibration,
+                                s_cfg.servo_calibration_count)!=SERVO_OK) {
+            (void)Servo_Deinit(&s_servo);
+            ok=false;
+        }
         device_result(DEV_SERVO,ok,16u);
         if(ok) {
             g_all_servo_request_mdeg=s_cfg.servo.initial_angle_mdeg;
             g_all_servo_applied_mdeg=s_cfg.servo.initial_angle_mdeg;
+            g_all_servo_pwm_us=s_servo.last_pulse_us;
         }
     }
     if(TEST_STEPPER) {
