@@ -72,6 +72,9 @@ volatile int32_t g_all_stepper_request_mdeg;
 volatile int32_t g_all_stepper_applied_mdeg;
 volatile uint32_t g_all_stepper_homed;
 volatile uint32_t g_all_stepper_moving;
+volatile uint32_t g_all_servo_jog_state; /* 0 disabled, 1 release, 2 armed, 3 out, 4 return, 6 done, 7 failed */
+volatile uint32_t g_all_sw3_presses;
+volatile uint32_t g_all_motor_test_busy; /* 0 idle, 1 stepper, 2 servo */
 volatile uint32_t g_all_stepper_jog_state; /* 0 disabled, 1 waiting release, 2 armed, 3 out, 4 dwell, 5 back, 6 done, 7 failed */
 volatile int32_t g_all_stepper_jog_steps; /* commanded step count, not encoder feedback */
 
@@ -83,6 +86,8 @@ static StepMotor s_step_motor;
 static StepperController s_stepper;
 static GpioOutput s_led;
 static GpioButton s_button;
+static GpioButton s_button3;
+static bool s_button3_ready;
 static uint8_t s_adc_pending;
 static uint8_t s_led_on;
 
@@ -178,6 +183,7 @@ void MP_TERP_AllTestButtonPortIrq(void)
 {
     if((g_all_ready_mask&DEV_BUTTON)!=0u)
         GpioButton_OnPortIrq(&s_button);
+    if(s_button3_ready)GpioButton_OnPortIrq(&s_button3);
 }
 
 /* Record ordinary driver init failures without stopping independent devices. */
@@ -208,6 +214,7 @@ static void jog_fail(uint32_t code)
     (void)StepperController_Release(&s_stepper);
     g_all_stepper_moving=0u;
     g_all_stepper_jog_state=7u;
+    g_all_motor_test_busy=0u;
     runtime_error(DEV_STEP,code);
 }
 
@@ -232,6 +239,8 @@ static void stepper_jog_update(uint32_t now)
     }
     if(state==2u) {
         if(!pressed || (uint32_t)(now-s_button_since)<100u)return;
+        if(g_all_motor_test_busy!=0u) { g_all_stepper_jog_state=1u;return; }
+        g_all_motor_test_busy=1u;
         if(StepperController_SetHome(&s_stepper,0)!=STEPPER_OK ||
            StepperController_SetTargetAngle(&s_stepper,5000)!=STEPPER_OK) {
             jog_fail(54u);return;
@@ -260,6 +269,7 @@ static void stepper_jog_update(uint32_t now)
                 jog_fail(57u);return;
             }
             g_all_stepper_jog_state=6u;
+            g_all_motor_test_busy=0u;
         }
     } else if(state==4u && (uint32_t)(now-s_jog_since)>=500u) {
         if(StepperController_SetTargetAngle(&s_stepper,0)!=STEPPER_OK) {
@@ -267,6 +277,53 @@ static void stepper_jog_update(uint32_t now)
         }
         s_jog_since=now;
         g_all_stepper_jog_state=5u;
+    }
+}
+#endif
+
+#if TEST_SERVO && TEST_BUTTON
+/* Standalone unloaded servo only. Single small move and return per reset.
+ * No scan, no sensor-to-motor coupling. Commanded angle is not feedback. */
+static uint32_t s_servo_since,s_sw3_since;
+static bool s_sw3_sampled,s_sw3_last;
+static bool servo_jog_command(int32_t angle)
+{
+    if(Servo_SetAngle(&s_servo,angle)!=SERVO_OK) {
+        runtime_error(DEV_SERVO,42u);
+        g_all_servo_jog_state=7u;
+        g_all_motor_test_busy=0u;
+        return false;
+    }
+    g_all_servo_request_mdeg=angle;
+    g_all_servo_applied_mdeg=angle;
+    return true;
+}
+static void servo_jog_update(uint32_t now)
+{
+    uint32_t state=g_all_servo_jog_state;
+    bool pressed;
+    if(state==0u || state>=6u)return;
+    if(!s_button3_ready) { g_all_servo_jog_state=7u;runtime_error(DEV_SERVO,43u);return; }
+    pressed=((s_button3.config.gpio->PDIR>>s_button3.config.pin)&1u)!=0u;
+    if(s_button3.config.active_low)pressed=!pressed;
+    if(!s_sw3_sampled || pressed!=s_sw3_last) {
+        s_sw3_sampled=true;s_sw3_last=pressed;s_sw3_since=now;
+    }
+    if(state==1u) {
+        if(!pressed && (uint32_t)(now-s_sw3_since)>=100u)g_all_servo_jog_state=2u;
+    } else if(state==2u) {
+        if(!pressed || (uint32_t)(now-s_sw3_since)<100u)return;
+        if(g_all_motor_test_busy!=0u) { g_all_servo_jog_state=1u;return; }
+        g_all_motor_test_busy=2u;
+        if(servo_jog_command(s_cfg.servo.initial_angle_mdeg+5000)) {
+            s_servo_since=now;g_all_servo_jog_state=3u;
+        }
+    } else if(state==3u && (uint32_t)(now-s_servo_since)>=1000u) {
+        if(servo_jog_command(s_cfg.servo.initial_angle_mdeg)) {
+            s_servo_since=now;g_all_servo_jog_state=4u;
+        }
+    } else if(state==4u && (uint32_t)(now-s_servo_since)>=1000u) {
+        g_all_servo_jog_state=6u;g_all_motor_test_busy=0u;
     }
 }
 #endif
@@ -285,8 +342,9 @@ static void draw_screen(void)
     (void)snprintf(line,sizeof(line),"Servo %ld",
                    (long)(g_all_servo_applied_mdeg/1000));
     OLED_DrawString(0,36,line,1u,OLED_WHITE);
-    OLED_DrawString(0,48,g_all_stepper_homed?"STEP HOME":"STEP NOT HOME",
-                    1u,OLED_WHITE);
+    (void)snprintf(line,sizeof(line),"STEP %lu SERVO %lu",
+        (unsigned long)g_all_stepper_jog_state,(unsigned long)g_all_servo_jog_state);
+    OLED_DrawString(0,48,line,1u,OLED_WHITE);
     if(OLED_Update()==0)++g_all_oled_updates;
     else runtime_error(DEV_OLED,81u);
 }
@@ -335,6 +393,10 @@ int main(void)
     if(TEST_BUTTON) {
         device_result(DEV_BUTTON,GpioButton_Init(&s_button,&s_cfg.button_gpio),12u);
         if(g_all_ready_mask&DEV_BUTTON) {
+            GpioButtonConfig sw3=s_cfg.button_gpio;
+            sw3.pin=13u; /* EVB SW3, same port and polarity as SW2 */
+            s_button3_ready=GpioButton_Init(&s_button3,&sw3);
+            if(!s_button3_ready)runtime_error(DEV_BUTTON,44u);
             MP_NvicClearPending(PORTC_IRQn);
             MP_NvicEnable(PORTC_IRQn);
         }
@@ -382,6 +444,9 @@ int main(void)
 #if TEST_STEPPER && TEST_STEPPER_BUTTON_JOG
     if(g_all_ready_mask&DEV_STEP)g_all_stepper_jog_state=1u;
 #endif
+#if TEST_SERVO && TEST_BUTTON
+    if(g_all_ready_mask&DEV_SERVO)g_all_servo_jog_state=1u;
+#endif
     g_all_boot_stage=9u;
     g_all_state=2u;
 
@@ -389,7 +454,9 @@ int main(void)
         uint32_t now,mm;
         bool valid;
         uint16_t raw;
+#if !(TEST_SERVO && TEST_BUTTON)
         int32_t servo_target;
+#endif
 #if !(TEST_STEPPER && TEST_STEPPER_BUTTON_JOG)
         int32_t step_target,angle;
         bool moving;
@@ -427,7 +494,11 @@ int main(void)
         }
         if((g_all_ready_mask&DEV_BUTTON) && GpioButton_TakePress(&s_button))++g_all_button_presses;
 
+        if(s_button3_ready && GpioButton_TakePress(&s_button3))++g_all_sw3_presses;
         if(g_all_ready_mask&DEV_SERVO) {
+#if TEST_SERVO && TEST_BUTTON
+        servo_jog_update(now);
+#else
         servo_target=g_all_servo_request_mdeg;
         if(servo_target!=g_all_servo_applied_mdeg) {
             if(Servo_SetAngle(&s_servo,servo_target)==SERVO_OK)
@@ -437,7 +508,7 @@ int main(void)
                 g_all_servo_request_mdeg=g_all_servo_applied_mdeg;
             }
         }
-
+#endif
         }
         if(g_all_ready_mask&DEV_STEP) {
 #if TEST_STEPPER && TEST_STEPPER_BUTTON_JOG
