@@ -2,7 +2,7 @@
 #include <stddef.h>
 
 #define SERVO_MAX_TICKS 65536u
-#define SERVO_PWM_SOURCE 1u /* FTM functional clock */
+#define SERVO_PWM_SOURCE 3u /* PCC-selected external functional clock (SOSCDIV1) */
 
 /* Each instance is dedicated to one Servo object in this version.
  * FTM channels share MOD, counter and prescaler.
@@ -117,6 +117,8 @@ ServoResult Servo_Init(Servo *servo, const ServoConfig *cfg)
 
     cfg->ftm->SC = 0u;
     cfg->ftm->MODE |= FTM_MODE_WPDIS_MASK;
+    cfg->ftm->COMBINE = 0u; /* independent edge-aligned channels */
+    cfg->ftm->POL = 0u;     /* non-inverted output */
     cfg->ftm->CNTIN = 0u;
     cfg->ftm->MOD = period_ticks - 1u;
     cfg->ftm->CONTROLS[cfg->channel].CnSC =
