@@ -1,6 +1,6 @@
 #include "ultrasonic_port_s32k144.h"
 #include <stddef.h>
-#define US_FTM_SOURCE 1u
+#define US_FTM_SOURCE 3u /* PCC-selected external functional clock (SOSCDIV1) */
 static uint32_t ftm_pcc(const FTM_Type *ftm){
     if(ftm==FTM0)return PCC_FTM0_INDEX;
     if(ftm==FTM1)return PCC_FTM1_INDEX;
