@@ -18,7 +18,7 @@
 #define FTM_SC_PWMEN0_MASK (1u << 16)
 typedef struct {volatile uint32_t CnSC,CnV;} FTM_CHANNEL_Type;
 typedef struct {
-    volatile uint32_t SC,CNT,CNTIN,MOD,MODE;
+    volatile uint32_t SC,CNT,CNTIN,MOD,MODE,COMBINE,POL;
     FTM_CHANNEL_Type CONTROLS[8];
 } FTM_Type;
 typedef struct {volatile uint32_t PCR[32];} PORT_Type;
