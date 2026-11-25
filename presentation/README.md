@@ -11,6 +11,8 @@
 
 - [2026-11-25 Stage 5 전체 App 설정·조준 스냅샷 및 GitHub Actions 검증](../docs/20261125_Stage5_통합프로파일_조준스냅샷_CI검증.md) — PC용 테스트는 PASS, 실제 보드 검증은 아직 필요
 
+- [2026-11-25 Stage 5 LCD 비차단 큐/1ms FSM 및 CI](../docs/20261125_LCD_비차단_큐기반_전송_및_CI_검증.md) — 주변장치 Bring-up 동기 모드와 최종 App 비차단 모드 비교, 예상 전송 시간과 검증 범위
+
 ## 발표 이미지
 
 - [원래 목표: 서보와 초음파 센서 일체형](images/20261125_goal_coupled_scan.svg)
