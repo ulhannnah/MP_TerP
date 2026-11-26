@@ -41,7 +41,7 @@ typedef struct {
     void (*led_write)(void *user,bool on);
     uint8_t use_gpio_led;
     GpioOutputConfig led_gpio;
-    uint8_t use_gpio_button; /* SW2: selected target aim request */
+    uint8_t use_gpio_button; /* final PTC4 external AIM input */
     GpioButtonConfig button_gpio;
     uint8_t use_home_button; /* optional legacy home input */
     GpioButtonConfig home_button_gpio;
@@ -94,6 +94,6 @@ void BoardSystem_OnFireButton(BoardSystem *board);
 void BoardSystem_OnFireButtonPortIrq(BoardSystem *board);
 /* Only after physically verifying the Stepper points at the selected scan
  * center. Declares relative zero; NO mechanical homing move is performed.
- * In the final build the SW3 event calls this exactly once. */
+ * Final branch can declare zero at startup after operator alignment. */
 bool BoardSystem_ConfirmStepperCenter(BoardSystem *board);
 #endif
