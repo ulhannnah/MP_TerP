@@ -32,3 +32,5 @@ jobs:
         run: bash tests/run_final_entry_tests.sh
       - name: 최종 레이더 자동 스캔·검출·조준 가상 통합
         run: bash tests/run_final_runtime_tests.sh
+      - name: 외부 Active-Low 버튼 인터럽트/플래그·릴레이 GPIO 테스트
+        run: bash tests/run_external_gpio_tests.sh
