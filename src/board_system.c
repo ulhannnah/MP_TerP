@@ -90,6 +90,7 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
        return false;
     b->initialized=0u;b->adc_pending=0u;b->config=*cfg;
     b->relay_active=0u;b->relay_armed=0u;
+    b->previous_fire_state=(uint8_t)APP_FIRE_IDLE;
     b->relay_started_ms=0u;b->relay_pulse_count=0u;
     b->external_aim_press_count=0u;b->external_relay_press_count=0u;
     b->aiming_scan_center_mdeg=cfg->aiming_scan_center_mdeg;
@@ -174,10 +175,17 @@ void BoardSystem_Update(BoardSystem *b){
     }
 
     App_Update(&b->app,now);
-    if(b->app.fire_state==APP_FIRE_INDICATING)
+    if(b->app.fire_state==APP_FIRE_INDICATING &&
+       b->previous_fire_state!=(uint8_t)APP_FIRE_INDICATING)
         b->relay_armed=1u;
-    else if(b->app.fire_state==APP_FIRE_TIMED_OUT)
+    else if(b->app.fire_state==APP_FIRE_TIMED_OUT) {
         b->relay_armed=0u;
+        if(b->relay_active) {
+            GpioOutput_Write(&b->relay,false);
+            b->relay_active=0u;
+        }
+    }
+    b->previous_fire_state=(uint8_t)b->app.fire_state;
 
     if(b->config.use_relay_button &&
        GpioButton_TakePressDebounced(&b->relay_button,now,
