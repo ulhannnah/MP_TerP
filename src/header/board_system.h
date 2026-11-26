@@ -75,6 +75,7 @@ typedef struct {
     int32_t aiming_scan_center_mdeg;
     uint8_t relay_active;
     uint8_t relay_armed;
+    uint8_t previous_fire_state;
     uint32_t relay_started_ms;
     uint32_t relay_pulse_count;
     uint32_t external_aim_press_count;
