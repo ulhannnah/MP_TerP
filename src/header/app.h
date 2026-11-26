@@ -49,8 +49,9 @@ typedef struct {
     uint8_t fire_snapshot_mode;
     uint32_t fire_aim_timeout_ms;
     /* 1: Servo sweeps and Echo can be inspected separately, but the sensor
-     * is NOT mechanically coupled. Do not form angular frames/targets or aim.
-     * Set only in a non-coupled diagnostic build; normal App uses 0. */
+     * is NOT mechanically coupled. Do not form angular frames/target IDs.
+     * Optional diagnostic_manual_aim uses an explicit ADC-selected angle
+     * instead of claiming a target bearing; normal coupled App uses 0. */
     uint8_t uncoupled_diagnostic;
     /* Enable ADC->manual Stepper angle in the uncoupled bench mode. A manually
      * selected bearing is NOT a detected target. */
