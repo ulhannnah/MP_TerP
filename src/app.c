@@ -126,7 +126,7 @@ void App_Update(App *app,uint32_t now){
         }
         if(app->config.hw.lcd_write &&
            (uint32_t)(now-app->last_lcd_ms)>=app->config.lcd_period_ms) {
-            char text[17];
+            char text[32]; /* snprintf buffer; LCD driver trims to 16 columns */
             app->last_lcd_ms=now;
             if(app->diagnostic_valid) {
                 (void)snprintf(text,sizeof(text),"ECHO:%lumm",
