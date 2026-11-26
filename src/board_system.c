@@ -36,6 +36,12 @@ static bool aim_move(void *ctx,int32_t angle){
         return false;
     return StepperController_SetTargetAngle(&b->stepper,relative)==STEPPER_OK;
 }
+static bool aim_stop(void *ctx){
+    BoardSystem *b=(BoardSystem *)ctx;
+    /* STOP cuts the timer-driven steps; release the ULN2003 coils as well. */
+    if(StepperController_Stop(&b->stepper)!=STEPPER_OK)return false;
+    return StepperController_Release(&b->stepper)==STEPPER_OK;
+}
 static bool aim_position(void *ctx,int32_t *angle,bool *moving){
     BoardSystem *b=(BoardSystem *)ctx;
     int32_t relative=0;
@@ -66,7 +72,10 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
        cfg->ultrasonic.trigger_timer_channel==cfg->timer.tick_channel ||
        cfg->aiming_scan_center_mdeg < cfg->application.minimum_scan_angle_mdeg ||
        cfg->aiming_scan_center_mdeg > cfg->application.maximum_scan_angle_mdeg ||
-       (cfg->lcd_write && !cfg->lcd_init))
+       (cfg->lcd_write && !cfg->lcd_init) ||
+       (cfg->use_home_button && (!cfg->use_gpio_button ||
+          cfg->home_button_gpio.port!=cfg->button_gpio.port ||
+          cfg->home_button_gpio.pin==cfg->button_gpio.pin)))
        return false;
     b->initialized=0u;b->adc_pending=0u;b->config=*cfg;
     b->aiming_scan_center_mdeg=cfg->aiming_scan_center_mdeg;
@@ -77,6 +86,8 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
     if(!ADCChannel_Init(&b->adc,&cfg->adc))return false;
     if(cfg->use_gpio_led && !GpioOutput_Init(&b->led,&cfg->led_gpio))return false;
     if(cfg->use_gpio_button && !GpioButton_Init(&b->button,&cfg->button_gpio))return false;
+    if(cfg->use_home_button &&
+       !GpioButton_Init(&b->home_button,&cfg->home_button_gpio))return false;
     if(StepMotor_Init(&b->step_motor,cfg->stepper_pins,cfg->stepper_delay)!=0)return false;
     StepMotor_SetMode(&b->step_motor,cfg->stepper_mode);
     stepper=cfg->stepper;stepper.motor=&b->step_motor;
@@ -99,6 +110,7 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
     app.hw.echo_update=echo_update;
     app.hw.adc_read=adc_read;
     app.hw.aim_move=aim_move;
+    app.hw.aim_stop=aim_stop;
     app.hw.aim_position=aim_position;
     app.hw.oled_flush=oled_flush;
     app.hw.lcd_write=cfg->lcd_write?lcd_write:NULL;
@@ -111,6 +123,11 @@ void BoardSystem_Update(BoardSystem *b){
     uint32_t now;
     if(!b||!b->initialized)return;
     now=TimerManager_GetTickMs();
+    /* SW3 only declares zero after the user physically aligned the barrel
+     * with the center direction. A switch press is NOT a homing measurement. */
+    if(b->config.use_home_button && GpioButton_TakePress(&b->home_button) &&
+       !StepperController_IsHomed(&b->stepper))
+        (void)BoardSystem_ConfirmStepperCenter(b);
     if(b->config.use_gpio_button && GpioButton_TakePress(&b->button))
         App_RequestFire(&b->app,now);
     App_Update(&b->app,now);
@@ -127,8 +144,9 @@ void BoardSystem_OnFireButton(BoardSystem *b){
 }
 
 void BoardSystem_OnFireButtonPortIrq(BoardSystem *b){
-    if(b&&b->initialized&&b->config.use_gpio_button)
-        GpioButton_OnPortIrq(&b->button);
+    if(!b||!b->initialized)return;
+    if(b->config.use_gpio_button)GpioButton_OnPortIrq(&b->button);
+    if(b->config.use_home_button)GpioButton_OnPortIrq(&b->home_button);
 }
 
 bool BoardSystem_ConfirmStepperCenter(BoardSystem *b)
