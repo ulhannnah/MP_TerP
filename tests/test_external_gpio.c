@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "gpio_io.h"
+#include "relay_policy.h"
 PCC_Type mock_pcc;
 static PORT_Type port_c,port_e;
 static GPIO_Type gpio_c,gpio_e;
@@ -63,9 +64,27 @@ static void test_relay_output(void)
     GpioOutput_Write(&relay,false);
     assert((gpio_e.PCOR&mask)!=0u);
 }
+static void test_relay_interlock(void)
+{
+    bool armed=false,active=false;
+    /* Fake enum values only for the helper: IDLE=0, INDICATING=2. */
+    assert(!MP_RelayNewAimCompleted(0u,0u,2u));
+    assert(MP_RelayNewAimCompleted(1u,2u,2u));
+    assert(!MP_RelayNewAimCompleted(2u,2u,2u));
+    armed=true;
+    assert(!MP_RelayCanPulse(armed,active,false,false));
+    assert(!MP_RelayCanPulse(armed,active,true,true));
+    assert(MP_RelayCanPulse(armed,active,true,false));
+    active=true;armed=false;
+    assert(!MP_RelayCanPulse(armed,active,true,false));
+    assert(!MP_RelayPulseExpired(active,1199u,1000u,200u));
+    assert(MP_RelayPulseExpired(active,1200u,1000u,200u));
+    assert(MP_RelayPulseExpired(true,10u,UINT32_MAX-99u,100u));
+    assert(!MP_RelayPulseExpired(false,1200u,1000u,200u));
+}
 int main(void)
 {
-    test_buttons();test_relay_output();
-    puts("PASS: IRQ flag, Active-Low press/debounce/rearm, relay default LOW and HIGH command");
+    test_buttons();test_relay_output();test_relay_interlock();
+    puts("PASS: IRQ flag, Active-Low debounced press, active-high relay output, interlock and pulse expiry");
     return 0;
 }
