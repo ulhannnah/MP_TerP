@@ -1,13 +1,14 @@
 #include "project_config.h"
 
 /* Base Servo/Stepper/Ultrasonic/OLED/LCD pins retain their 2026-11-25
- * mapping. The FINAL Stage 5 specifically moves button inputs to J3
- * PTC4/PTC5, ADC to J4 PTB0, and adds PTE0 active-high relay signal.
+ * mapping. The FINAL Stage 5 uses debug-safe button pins PTC8/PTC9
+ * on J6, PTB0 external ADC and PTE0 active-high relay signal.
  * ALL_TEST retains its established on-board SW2/SW3 and ADC mapping.
  * Check external hardware voltage levels and physical clearances before use.
  */
 #if defined(MP_TERP_USE_BOARD_CONFIG_TEMPLATE) && (defined(MP_TERP_ALL_TEST_MAIN) || (defined(MP_TERP_STAGE_MAIN) && MP_TERP_STAGE != 4))
 #include "board_system.h"
+#include "final_io_pins.h"
 #include "app_profile.h"
 #include "lcd_hd44780.h"
 #include "mp_irq_compat.h"
@@ -82,22 +83,26 @@ bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg)
      * Requires physically coupled scan direction and explicit Stepper home. */
     cfg->application=MP_TERP_Radar120Profile();
     /* Final external controls (only Stage5; ALL_TEST is unchanged):
-     * AIM button: PTC4 / J3-12, Active-Low to GND, falling-edge IRQ.
-     * RELAY button: PTC5 / J3-10, Active-Low to GND, falling-edge IRQ.
+     * AIM button: PTC8 / J6-09, Active-Low to GND, falling-edge IRQ.
+     * RELAY button: PTC9 / J6-11, Active-Low to GND, falling-edge IRQ.
      * RELAY_OUT: PTE0 / J3-06, Active-High logic signal; default LOW.
      * External potentiometer wiper: PTB0 / J4-05 / ADC0_SE4.
      * PTB0 replaces PTC14, which is wired to the on-board potentiometer.
      * Confirm header revision / 3.3V-or-5V reference BEFORE connecting.
+     * PTC4 is SWD_CLK and PTC5 JTAG_TDI: never assign them as GPIO.
      * No new hardware pin is used in the original ALL_TEST branch.
      */
-    cfg->button_gpio=(GpioButtonConfig){PORTC,PTC,PCC_PORTC_INDEX,4u,
+    cfg->button_gpio=(GpioButtonConfig){PORTC,PTC,PCC_PORTC_INDEX,
+                                       MP_TERP_FINAL_AIM_PORTC_PIN,
                                        true,true};
     cfg->use_home_button=0u;
     cfg->use_relay_button=1u;
-    cfg->relay_button_gpio=(GpioButtonConfig){PORTC,PTC,PCC_PORTC_INDEX,5u,
+    cfg->relay_button_gpio=(GpioButtonConfig){PORTC,PTC,PCC_PORTC_INDEX,
+                                             MP_TERP_FINAL_RELAY_PORTC_PIN,
                                              true,true};
     cfg->use_relay_output=1u;
-    cfg->relay_output_gpio=(GpioOutputConfig){PORTE,PTE,PCC_PORTE_INDEX,0u,true};
+    cfg->relay_output_gpio=(GpioOutputConfig){PORTE,PTE,PCC_PORTE_INDEX,
+                                             MP_TERP_FINAL_RELAY_PORTE_PIN,true};
     cfg->relay_pulse_ms=200u;
     cfg->external_button_debounce_ms=35u;
     /* Manually position the output shaft at scan center (90deg) while off.
@@ -108,7 +113,7 @@ bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg)
     cfg->use_external_adc_pin=1u;
     cfg->external_adc_port=PORTB;
     cfg->external_adc_port_pcc_index=PCC_PORTB_INDEX;
-    cfg->external_adc_pin=0u;
+    cfg->external_adc_pin=MP_TERP_FINAL_POT_PORTB_PIN;
     /* In uncoupled setup the ADC selects manual 30~150deg azimuth, not ID.
      * Once mechanically coupled, it selects target ID 1..3 as before. */
 #ifndef MP_TERP_CONFIRM_COUPLED_GEOMETRY
