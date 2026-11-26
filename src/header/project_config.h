@@ -1,13 +1,27 @@
 #ifndef MP_TERP_PROJECT_CONFIG_H
 #define MP_TERP_PROJECT_CONFIG_H
 
-/* Default bench entry point. No S32DS -D options required.
- * Explicit legacy stage/example selection still overrides this default.
- * Set MP_TERP_SMOKE_MAIN to return to the no-peripheral test.
+/* FINAL branch defaults to the integrated Stage 5 application.
+ * Bring-up remains selectable explicitly with -DMP_TERP_ALL_TEST_MAIN,
+ * or -DMP_TERP_SMOKE_MAIN for the no-hardware smoke test.
+ * Geometry confirmation is NEVER inferred: physically couple the ultrasonic
+ * sensor with the SG90 before defining MP_TERP_CONFIRM_COUPLED_GEOMETRY.
  */
-#if !defined(MP_TERP_SMOKE_MAIN) && !defined(MP_TERP_STAGE_MAIN) && !defined(MP_TERP_USE_EXAMPLE_MAIN)
-#ifndef MP_TERP_ALL_TEST_MAIN
-#define MP_TERP_ALL_TEST_MAIN
+#if !defined(MP_TERP_SMOKE_MAIN) && !defined(MP_TERP_STAGE_MAIN) && \
+    !defined(MP_TERP_ALL_TEST_MAIN) && !defined(MP_TERP_USE_EXAMPLE_MAIN)
+#define MP_TERP_STAGE_MAIN
+#define MP_TERP_STAGE 5
+#define MP_TERP_FINAL_DEFAULT 1
+#endif
+
+#if defined(MP_TERP_STAGE_MAIN) && MP_TERP_STAGE == 5
+/* Preserve the 2026-11-25 confirmed code pin assignments; do NOT waive
+ * the independent sensor/servo mechanical-coupling check. */
+#ifndef MP_TERP_USE_BOARD_CONFIG_TEMPLATE
+#define MP_TERP_USE_BOARD_CONFIG_TEMPLATE
+#endif
+#ifndef MP_TERP_CONFIRM_PINMAP
+#define MP_TERP_CONFIRM_PINMAP
 #endif
 #endif
 
