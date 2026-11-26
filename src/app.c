@@ -38,7 +38,8 @@ bool App_Init(App *app,const AppConfig *cfg,uint32_t now){
        !cfg->hw.aim_position||!cfg->hw.led_write||
        cfg->oled_period_ms==0u||cfg->lcd_period_ms==0u||
        cfg->aim_tolerance_mdeg>360000u||cfg->maximum_display_distance_mm==0u||
-       (cfg->fire_snapshot_mode!=0u && cfg->fire_aim_timeout_ms==0u))
+       (cfg->fire_snapshot_mode!=0u &&
+        (cfg->fire_aim_timeout_ms==0u || !cfg->hw.aim_stop)))
         return false;
     operating_limit = cfg->operating_target_limit == 0u ? 3u : cfg->operating_target_limit;
     if(operating_limit > TRACKER_MAX_TARGETS)return false;
@@ -129,8 +130,9 @@ void App_Update(App *app,uint32_t now){
         if(app->fire_state==APP_FIRE_AIMING) {
             if((uint32_t)(now-app->fire_requested_at_ms) >=
                app->config.fire_aim_timeout_ms) {
-                /* Never indicate a timeout as an achieved aim. The open-loop
-                 * Stepper may still be moving; no physical STOP is inferred. */
+                /* Stop the timer-driven Stepper and release its coils. This
+                 * does not certify a physical position (no encoder). */
+                (void)app->config.hw.aim_stop(app->config.hw.context);
                 app->fire_state=APP_FIRE_TIMED_OUT;
             } else {
                 int32_t actual=0;
