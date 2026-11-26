@@ -3,6 +3,7 @@
 #include "oled.h"
 #include "aim_geometry.h"
 #include "relay_policy.h"
+#include "final_io_pins.h"
 #include <stddef.h>
 static bool servo_move(void *ctx,int32_t angle){
     BoardSystem *b=(BoardSystem *)ctx;
@@ -87,7 +88,15 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
        (cfg->use_relay_output &&
           (cfg->relay_pulse_ms==0u || !cfg->relay_output_gpio.active_high)) ||
        (cfg->use_external_adc_pin &&
-          (!cfg->external_adc_port || cfg->external_adc_pin>=32u)))
+          (!cfg->external_adc_port || cfg->external_adc_pin>=32u)) ||
+       /* SWD_CLK=PTC4 and JTAG_TDI=PTC5. NEVER remux either as GPIO,
+        * regardless of which external input role might claim it. */
+       (cfg->use_gpio_button && cfg->button_gpio.port==PORTC &&
+         MP_TERP_PortCDebugPinReserved(cfg->button_gpio.pin)) ||
+       (cfg->use_home_button && cfg->home_button_gpio.port==PORTC &&
+         MP_TERP_PortCDebugPinReserved(cfg->home_button_gpio.pin)) ||
+       (cfg->use_relay_button && cfg->relay_button_gpio.port==PORTC &&
+         MP_TERP_PortCDebugPinReserved(cfg->relay_button_gpio.pin)))
        return false;
     b->initialized=0u;b->adc_pending=0u;b->config=*cfg;
     b->relay_active=0u;b->relay_armed=0u;
