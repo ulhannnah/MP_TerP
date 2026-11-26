@@ -10,6 +10,7 @@
 static int32_t servo_angle=90000, stepper_angle=90000, aim_command=0;
 static uint32_t servo_commands, echo_count, aim_commands, stop_commands, led_on_count;
 static bool echo_pending, targets_present, stepper_homed, stepper_moving, led_active;
+static uint16_t external_adc_raw;
 
 void OLED_Clear(void){}
 void OLED_DrawPixel(int16_t x,int16_t y,uint8_t c)
@@ -48,7 +49,7 @@ static bool echo_take(void *ctx,uint32_t *mm,bool *valid)
     return true;
 }
 static bool adc_read(void *ctx,uint16_t *raw)
-{(void)ctx;*raw=0u;return true;} /* selected ID 1 */
+{(void)ctx;*raw=external_adc_raw;return true;}
 static bool aim_move(void *ctx,int32_t angle)
 {
     (void)ctx;
@@ -108,6 +109,58 @@ static void test_uncoupled_diagnostic(void)
     assert(!led_active);
     assert(servo_commands>before_servo+25u);
     puts("PASS: uncoupled Stage5 auto Servo + fixed Echo; no fake 2D/aim/LED");
+}
+
+static void test_manual_external_adc_aim(void)
+{
+    static App app;
+    AppConfig cfg=MP_TERP_Radar120Profile();
+    uint32_t before_aim=aim_commands, before_led=led_on_count;
+    cfg.hw.servo_set_angle=servo_set;
+    cfg.hw.echo_start=echo_start;
+    cfg.hw.echo_take=echo_take;
+    cfg.hw.adc_read=adc_read;
+    cfg.hw.aim_move=aim_move;
+    cfg.hw.aim_stop=aim_stop;
+    cfg.hw.aim_position=aim_position;
+    cfg.hw.led_write=led_write;
+    cfg.uncoupled_diagnostic=1u;
+    cfg.diagnostic_manual_aim=1u;
+    targets_present=false;
+    external_adc_raw=2048u;
+    stepper_homed=false;
+    assert(App_Init(&app,&cfg,0u));
+    App_Update(&app,1u);
+    assert(app.last_adc_raw==2048u);
+    assert(app.diagnostic_selected_angle_mdeg>=89900 &&
+           app.diagnostic_selected_angle_mdeg<=90100);
+    /* Without relative center, motor hardware callback refuses command. */
+    App_RequestFire(&app,10u);
+    assert(app.fire_state==APP_FIRE_IDLE && aim_commands==before_aim);
+    stepper_homed=true; /* software zero after physical alignment at power-on */
+    App_RequestFire(&app,20u);
+    assert(app.fire_state==APP_FIRE_AIMING);
+    assert(app.fire_snapshot_id==0u); /* manual, not a tracked ID */
+    assert(aim_commands==before_aim+1u);
+    assert(aim_command==app.diagnostic_selected_angle_mdeg);
+    stepper_angle=aim_command;
+    stepper_moving=false;
+    App_Update(&app,30u);
+    assert(app.fire_state==APP_FIRE_INDICATING);
+    assert(led_on_count==before_led && !led_active);
+    assert(app.processing.display_frame.frame_number==0u);
+    external_adc_raw=4095u;
+    App_Update(&app,35u);
+    assert(app.diagnostic_selected_angle_mdeg==150000);
+    App_RequestFire(&app,40u);
+    assert(app.fire_state==APP_FIRE_AIMING);
+    assert(aim_command==150000);
+    stepper_moving=true;
+    App_Update(&app,40u+cfg.fire_aim_timeout_ms+1u);
+    assert(app.fire_state==APP_FIRE_TIMED_OUT);
+    assert(!stepper_moving);
+    assert(!led_active);
+    puts("PASS: external ADC 30-150 manual Stepper aim, home gate and timeout, no 2D ID");
 }
 
 int main(void)
@@ -173,5 +226,6 @@ int main(void)
     assert(stop_commands==0u);
     puts("PASS: final auto scan, background, synthetic target ID, manual home guard, SW2 aim, LED");
     test_uncoupled_diagnostic();
+    test_manual_external_adc_aim();
     return 0;
 }
