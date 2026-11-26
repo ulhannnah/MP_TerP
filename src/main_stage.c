@@ -19,7 +19,7 @@
  * Do not enable conflicting main selectors simultaneously.
  *
  * Stage 5 preserves the 2026-11-25 motor/sensor/display pins, but uses
- * external PTC4/PTC5 buttons, PTB0 ADC and PTE0 relay signal.
+ * external PTC8/PTC9 buttons, PTB0 ADC and PTE0 relay signal.
  * Without coupled geometry, manual ADC azimuth moves the Stepper without
  * claiming an ultrasonic target bearing; the 2D tracker remains disabled.
  * Stage 1-3 still require the board configuration supplied by the caller.
@@ -37,6 +37,7 @@
 #include "board_system.h"
 #include "clocks_and_modes.h"
 #include "mp_irq_compat.h"
+#include "final_io_pins.h"
 
 /* Always visible in the S32DS debugger; no blocking serial print required. */
 volatile uint32_t g_stage_state;       /* 0 boot, 1 ready, 2 working, 0xDEAD failed */
@@ -296,19 +297,19 @@ int main(void)
             s_cfg.ultrasonic.ftm_channel!=6u ||
             !s_cfg.use_gpio_button ||
             s_cfg.button_gpio.port!=PORTC ||
-            s_cfg.button_gpio.pin!=4u ||
+            s_cfg.button_gpio.pin!=MP_TERP_FINAL_AIM_PORTC_PIN ||
             !s_cfg.button_gpio.active_low ||
             !s_cfg.use_relay_button ||
             s_cfg.relay_button_gpio.port!=PORTC ||
-            s_cfg.relay_button_gpio.pin!=5u ||
+            s_cfg.relay_button_gpio.pin!=MP_TERP_FINAL_RELAY_PORTC_PIN ||
             !s_cfg.relay_button_gpio.active_low ||
             !s_cfg.use_relay_output ||
             s_cfg.relay_output_gpio.port!=PORTE ||
-            s_cfg.relay_output_gpio.pin!=0u ||
+            s_cfg.relay_output_gpio.pin!=MP_TERP_FINAL_RELAY_PORTE_PIN ||
             !s_cfg.relay_output_gpio.active_high ||
             !s_cfg.use_external_adc_pin ||
             s_cfg.external_adc_port!=PORTB ||
-            s_cfg.external_adc_pin!=0u ||
+            s_cfg.external_adc_pin!=MP_TERP_FINAL_POT_PORTB_PIN ||
             s_cfg.adc.adc!=ADC0 ||
             s_cfg.adc.channel!=4u)
         stage_fault(53u); /* final external IRQ/pin map guard */
