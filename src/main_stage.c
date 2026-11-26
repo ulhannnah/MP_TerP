@@ -311,7 +311,7 @@ int main(void)
             s_cfg.external_adc_pin!=0u ||
             s_cfg.adc.adc!=ADC0 ||
             s_cfg.adc.channel!=4u)
-        stage_fault(53u); /* 2026-11-25 IRQ/pin map guard */
+        stage_fault(53u); /* final external IRQ/pin map guard */
     else {
 #ifndef MP_TERP_CONFIRM_COUPLED_GEOMETRY
         /* Default: servo sweeps and fixed Echo can be exercised, but
@@ -381,7 +381,8 @@ int main(void)
          * Do not pre-fill/auto-accept the token in production firmware. */
         if(g_stage_stepper_center_confirm==0x484F4D45u) {
             g_stage_stepper_center_confirm=0u;
-            if(BoardSystem_ConfirmStepperCenter(&s_board))
+            if(BoardSystem_ConfirmStepperCenter(&s_board) ||
+               StepperController_IsHomed(&s_board.stepper))
                 g_stage_stepper_center_homed=1u;
             else g_stage_error=54u;
         }
