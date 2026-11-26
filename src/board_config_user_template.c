@@ -1,10 +1,10 @@
 #include "project_config.h"
 
-/* 2026-11-25 EVB-Q100 pin profile is preserved in the final branch.
- * Stage 5 uses the automatic 120 degree radar application. Standalone
- * ALL_TEST remains explicitly selectable for independent motor tests.
- * Before Stage 5 hardware operation, verify sensor/servo physical coupling,
- * mechanical clearances, power rails and all shield wiring.
+/* Base Servo/Stepper/Ultrasonic/OLED/LCD pins retain their 2026-11-25
+ * mapping. The FINAL Stage 5 specifically moves button inputs to J3
+ * PTC4/PTC5, ADC to J4 PTB0, and adds PTE0 active-high relay signal.
+ * ALL_TEST retains its established on-board SW2/SW3 and ADC mapping.
+ * Check external hardware voltage levels and physical clearances before use.
  */
 #if defined(MP_TERP_USE_BOARD_CONFIG_TEMPLATE) && (defined(MP_TERP_ALL_TEST_MAIN) || (defined(MP_TERP_STAGE_MAIN) && MP_TERP_STAGE != 4))
 #include "board_system.h"
