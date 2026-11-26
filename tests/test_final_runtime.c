@@ -22,6 +22,8 @@ void OLED_FillRect(int16_t a,int16_t b,int16_t c,int16_t d,uint8_t e)
 {(void)a;(void)b;(void)c;(void)d;(void)e;}
 void OLED_DrawChar(int16_t a,int16_t b,char c,uint8_t d,uint8_t e)
 {(void)a;(void)b;(void)c;(void)d;(void)e;}
+void OLED_DrawString(int16_t a,int16_t b,const char *s,uint8_t d,uint8_t e)
+{(void)a;(void)b;(void)s;(void)d;(void)e;}
 static bool servo_set(void *ctx,int32_t angle)
 {
     (void)ctx;servo_angle=angle;++servo_commands;
@@ -69,6 +71,45 @@ static void led_write(void *ctx,bool on)
     if(on && !led_active)++led_on_count;
     led_active=on;
 }
+static void test_uncoupled_diagnostic(void)
+{
+    static App app;
+    AppConfig cfg=MP_TERP_Radar120Profile();
+    RadarTarget candidate;
+    uint32_t before_aim=aim_commands;
+    uint32_t before_led=led_on_count;
+    uint32_t before_servo=servo_commands;
+
+    cfg.hw.servo_set_angle=servo_set;
+    cfg.hw.echo_start=echo_start;
+    cfg.hw.echo_take=echo_take;
+    cfg.hw.adc_read=adc_read;
+    cfg.hw.aim_move=aim_move;
+    cfg.hw.aim_stop=aim_stop;
+    cfg.hw.aim_position=aim_position;
+    cfg.hw.led_write=led_write;
+    cfg.uncoupled_diagnostic=1u;
+    targets_present=false;
+    stepper_homed=true; /* even an existing home must not permit aiming */
+    assert(App_Init(&app,&cfg,0u));
+    assert(servo_commands>before_servo);
+    for(uint32_t ms=0u;ms<8000u;ms++) {
+        App_Update(&app,ms);
+        if(ms==2000u || ms==4000u)App_RequestFire(&app,ms);
+    }
+    assert(app.diagnostic_samples>=25u);
+    assert(app.diagnostic_valid==1u && app.diagnostic_range_mm==3000u);
+    assert(app.processing.display_frame.frame_number==0u);
+    assert(app.processing.candidate_count==0u);
+    assert(!app.processing.background_ready);
+    assert(!TargetTracker_Get(&app.processing.tracker,1u,&candidate));
+    assert(app.fire_state==APP_FIRE_IDLE);
+    assert(aim_commands==before_aim && led_on_count==before_led);
+    assert(!led_active);
+    assert(servo_commands>before_servo+25u);
+    puts("PASS: uncoupled Stage5 auto Servo + fixed Echo; no fake 2D/aim/LED");
+}
+
 int main(void)
 {
     static App app;
@@ -131,5 +172,6 @@ int main(void)
     assert(app.fire_state==APP_FIRE_IDLE && !led_active);
     assert(stop_commands==0u);
     puts("PASS: final auto scan, background, synthetic target ID, manual home guard, SW2 aim, LED");
+    test_uncoupled_diagnostic();
     return 0;
 }
