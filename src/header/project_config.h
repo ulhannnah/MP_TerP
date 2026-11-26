@@ -3,7 +3,8 @@
 
 /* FINAL branch defaults to integrated Stage 5.
  * No geometry confirmation -> honest uncoupled diagnostic:
- * autonomous Servo sweep + fixed-direction Echo, no 2D target/Stepper aim.
+ * autonomous Servo sweep, fixed-direction Echo, and external ADC manual
+ * Stepper bearing only (no false 2D target association).
  * Only after mechanically coupling the sensor with the SG90 may an S32DS
  * build explicitly define MP_TERP_CONFIRM_COUPLED_GEOMETRY for real radar.
  * -DMP_TERP_ALL_TEST_MAIN and -DMP_TERP_SMOKE_MAIN preserve debug modes.
