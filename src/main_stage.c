@@ -13,12 +13,13 @@
  *   MP_TERP_STAGE=4   virtual echo + production App (NO peripherals)
  *   MP_TERP_STAGE=5   full BoardSystem (REQUIRES geometry confirmation)
  *
- * No symbol -> original safe smoke main.c.
- * DO NOT define MP_TERP_USE_EXAMPLE_MAIN simultaneously.
+ * On the final branch, no -D main selector means Stage 5 by default.
+ * -DMP_TERP_ALL_TEST_MAIN restores the original standalone motor tests.
+ * Do not enable conflicting main selectors simultaneously.
  *
- * Stages 1,2,3,5 require the user-defined *verified* board mapping:
- *   bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg);
- * The repository intentionally does not guess GPIO/FTM/LPIT pins.
+ * Stage 5 uses the 2026-11-25 tested pin assignment, but requires an
+ * independently verified sensor/servo mechanical coupling flag.
+ * Stage 1-3 still require the board configuration supplied by the caller.
  */
 #if defined(MP_TERP_STAGE_MAIN)
 #ifndef MP_TERP_STAGE
