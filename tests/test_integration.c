@@ -47,6 +47,8 @@ static bool echo_take(void *ctx,uint32_t *dist,bool *valid){
 static bool adc_read(void *ctx,uint16_t *raw){(void)ctx;*raw=0u;return true;}
 static int32_t requested_aim_angle,reported_aim_angle;
 static bool reported_aim_moving;
+static uint32_t stopped_count;
+static bool aim_stop(void *ctx){(void)ctx;++stopped_count;reported_aim_moving=false;return true;}
 static bool aim_move(void *ctx,int32_t a){(void)ctx;requested_aim_angle=a;return true;}
 static bool aim_pos(void *ctx,int32_t *a,bool *m){
     (void)ctx;*a=reported_aim_angle;*m=reported_aim_moving;return true;
@@ -172,6 +174,9 @@ static void test_snapshot_aim(void){
     cfg.hw.aim_move=aim_move;
     cfg.hw.aim_position=aim_pos;
     cfg.hw.led_write=led_write;
+    /* Snapshot mode must fail closed without a motor stop callback. */
+    assert(!App_Init(&app,&cfg,0u));
+    cfg.hw.aim_stop=aim_stop;
     assert(cfg.fire_snapshot_mode==1u && cfg.fire_aim_timeout_ms>0u);
     assert(App_Init(&app,&cfg,0u));
     target=&app.processing.tracker.targets[0u];
@@ -181,6 +186,7 @@ static void test_snapshot_aim(void){
     target->range_mm=1000u;
     target->last_seen_ms=500u;
     requested_aim_angle=0;
+    stopped_count=0u;
     reported_aim_angle=0;
     reported_aim_moving=true;
     App_RequestFire(&app,600u);
@@ -211,6 +217,7 @@ static void test_snapshot_aim(void){
     assert(app.fire_state==APP_FIRE_AIMING);
     App_Update(&app,14000u);
     assert(app.fire_state==APP_FIRE_TIMED_OUT && !led_on);
+    assert(stopped_count==1u && !reported_aim_moving);
     /* Stale data must not initiate a new motion. */
     App_RequestFire(&app,20000u);
     assert(app.fire_state==APP_FIRE_IDLE);
