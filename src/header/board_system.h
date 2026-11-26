@@ -24,6 +24,10 @@ typedef struct {
     StepperControllerConfig stepper;
     UltrasonicPortConfig ultrasonic;
     ADCChannelConfig adc;
+    uint8_t use_external_adc_pin;
+    PORT_Type *external_adc_port; /* PTB0 / ADC0_SE4 in final Stage5 */
+    uint32_t external_adc_port_pcc_index;
+    uint8_t external_adc_pin;
     OLEDPortConfig oled_port;
     uint8_t custom_oled_port; /* 0 keeps existing default mapping */
     AppConfig application;
@@ -39,8 +43,18 @@ typedef struct {
     GpioOutputConfig led_gpio;
     uint8_t use_gpio_button; /* SW2: selected target aim request */
     GpioButtonConfig button_gpio;
-    uint8_t use_home_button; /* SW3: confirm physically aligned center once */
+    uint8_t use_home_button; /* optional legacy home input */
     GpioButtonConfig home_button_gpio;
+    /* Final: second external Active-Low switch requests a relay pulse. */
+    uint8_t use_relay_button;
+    GpioButtonConfig relay_button_gpio;
+    uint8_t use_relay_output;
+    GpioOutputConfig relay_output_gpio;
+    uint32_t relay_pulse_ms; /* defaults configured by board profile */
+    uint32_t external_button_debounce_ms;
+    /* Manually align Stepper with center before power-on; software declares
+     * zero without moving or measuring the physical shaft. */
+    uint8_t assume_stepper_center_on_boot;
     void *user;
 } BoardSystemConfig;
 
@@ -53,10 +67,18 @@ typedef struct {
     GpioOutput led;
     GpioButton button;
     GpioButton home_button;
+    GpioButton relay_button;
+    GpioOutput relay;
     App app;
     BoardSystemConfig config;
     uint8_t adc_pending;
     int32_t aiming_scan_center_mdeg;
+    uint8_t relay_active;
+    uint8_t relay_armed;
+    uint32_t relay_started_ms;
+    uint32_t relay_pulse_count;
+    uint32_t external_aim_press_count;
+    uint32_t external_relay_press_count;
     uint8_t initialized;
 } BoardSystem;
 
