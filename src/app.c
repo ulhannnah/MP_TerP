@@ -39,7 +39,7 @@ bool App_Init(App *app,const AppConfig *cfg,uint32_t now){
        !cfg->hw.aim_position||!cfg->hw.led_write||
        cfg->oled_period_ms==0u||cfg->lcd_period_ms==0u||
        cfg->aim_tolerance_mdeg>360000u||cfg->maximum_display_distance_mm==0u||
-       cfg->uncoupled_diagnostic>1u||
+       cfg->uncoupled_diagnostic>1u||cfg->diagnostic_manual_aim>1u||
        (cfg->fire_snapshot_mode!=0u &&
         (cfg->fire_aim_timeout_ms==0u || !cfg->hw.aim_stop)))
         return false;
@@ -86,6 +86,8 @@ bool App_Init(App *app,const AppConfig *cfg,uint32_t now){
     app->diagnostic_samples=0u;
     app->diagnostic_range_mm=0u;
     app->diagnostic_valid=0u;
+    app->last_adc_raw=0u;
+    app->diagnostic_selected_angle_mdeg=cfg->minimum_scan_angle_mdeg;
     RadarProcessing_RequestCalibration(&app->processing);
     if(!RadarScan_Start(&app->scan,now))return false;
     app->initialized=1u;
@@ -113,8 +115,48 @@ void App_Update(App *app,uint32_t now){
             app->diagnostic_valid=sample.valid?1u:0u;
             app->diagnostic_range_mm=sample.valid?sample.distance_mm:0u;
         }
-        /* Never fill 2D frames, create target IDs, or command the Stepper.
-         * Display unmistakable diagnostic labels, not a fake radar map. */
+        /* External potentiometer selects a MANUAL azimuth, not a target ID.
+         * No angular information is inferred from this fixed-direction Echo. */
+        if(app->config.diagnostic_manual_aim &&
+           app->config.hw.adc_read(app->config.hw.context,&raw)) {
+            const uint32_t adc=(raw>app->config.adc_max)?
+                                app->config.adc_max:raw;
+            const uint32_t span=(uint32_t)(app->config.maximum_scan_angle_mdeg-
+                                           app->config.minimum_scan_angle_mdeg);
+            app->last_adc_raw=(uint16_t)adc;
+            app->diagnostic_selected_angle_mdeg=
+                app->config.minimum_scan_angle_mdeg+
+                (int32_t)(((uint64_t)span*adc+app->config.adc_max/2u)/
+                          app->config.adc_max);
+        }
+        if(app->config.diagnostic_manual_aim &&
+           app->fire_state==APP_FIRE_AIMING) {
+            if((uint32_t)(now-app->fire_requested_at_ms)>=
+               app->config.fire_aim_timeout_ms) {
+                (void)app->config.hw.aim_stop(app->config.hw.context);
+                app->fire_state=APP_FIRE_TIMED_OUT;
+            } else {
+                int32_t angle=0;
+                bool in_motion=true;
+                if(app->config.hw.aim_position(app->config.hw.context,
+                                               &angle,&in_motion)) {
+                    int64_t error=(int64_t)angle-app->fire_snapshot_angle_mdeg;
+                    if(error<0)error=-error;
+                    if(!in_motion && error<=app->config.aim_tolerance_mdeg)
+                        app->fire_state=APP_FIRE_INDICATING;
+                }
+            }
+        }
+        /* In manual diagnostic APP_FIRE_INDICATING means software step count
+         * arrived, NOT that a physical encoder measured the position.
+         * The external relay has its own button and is never auto-fired. */
+        if(app->config.diagnostic_manual_aim &&
+           app->fire_state==APP_FIRE_INDICATING &&
+           (uint32_t)(now-app->fire_requested_at_ms)>
+             app->config.fire_aim_timeout_ms)
+            app->fire_state=APP_FIRE_IDLE;
+        /* Never fill 2D frames or create target IDs. User ADC angle is
+         * displayed as MANUAL and cannot be mistaken for measured bearing. */
         if(app->config.hw.oled_flush &&
            (uint32_t)(now-app->last_oled_ms)>=app->config.oled_period_ms) {
             app->last_oled_ms=now;
@@ -122,6 +164,12 @@ void App_Update(App *app,uint32_t now){
             OLED_DrawString(0,0,"FIXED SENSOR",1u,OLED_WHITE);
             OLED_DrawString(0,16,"SERVO SWEEP ONLY",1u,OLED_WHITE);
             OLED_DrawString(0,32,"NO 2D TARGETS",1u,OLED_WHITE);
+            if(app->config.diagnostic_manual_aim) {
+                char manual[32];
+                (void)snprintf(manual,sizeof(manual),"MANUAL %ld DEG",
+                     (long)(app->diagnostic_selected_angle_mdeg/1000));
+                OLED_DrawString(0,48,manual,1u,OLED_WHITE);
+            }
             (void)app->config.hw.oled_flush(app->config.hw.context);
         }
         if(app->config.hw.lcd_write &&
@@ -135,8 +183,14 @@ void App_Update(App *app,uint32_t now){
                 (void)snprintf(text,sizeof(text),"ECHO:INVALID");
             }
             (void)app->config.hw.lcd_write(app->config.hw.context,0u,text);
-            (void)app->config.hw.lcd_write(app->config.hw.context,1u,
-                                           "FIXED 1D / NO ID");
+            if(app->config.diagnostic_manual_aim) {
+                (void)snprintf(text,sizeof(text),"MANUAL:%ld DEG",
+                     (long)(app->diagnostic_selected_angle_mdeg/1000));
+                (void)app->config.hw.lcd_write(app->config.hw.context,1u,text);
+            } else {
+                (void)app->config.hw.lcd_write(app->config.hw.context,1u,
+                                               "FIXED 1D / NO ID");
+            }
         }
         return;
     }
@@ -144,8 +198,10 @@ void App_Update(App *app,uint32_t now){
         if(RadarProcessing_PushSample(&app->processing,&sample))
             RadarProcessing_ProcessCompleted(&app->processing,now);
     }
-    if(app->config.hw.adc_read(app->config.hw.context,&raw))
+    if(app->config.hw.adc_read(app->config.hw.context,&raw)) {
+        app->last_adc_raw=raw;
         (void)TargetSelector_Update(&app->selector,raw);
+    }
     id=TargetSelector_GetId(&app->selector);
     if(app->aim.selected_id!=id)AimController_Select(&app->aim,id);
     /* Snapshot mode never silently retargets while moving to a captured
@@ -214,8 +270,21 @@ void App_RequestFire(App *app,uint32_t now){
     RadarTarget target;
     uint8_t id;
     if(!app||!app->initialized)return;
-    /* Never allow a Stepper aim/LED command without real angular tracking. */
-    if(app->config.uncoupled_diagnostic)return;
+    if(app->config.uncoupled_diagnostic) {
+        /* Manual azimuth demonstration. It does not use sonar to infer a
+         * target angle. The Stepper must already have an established zero. */
+        if(!app->config.diagnostic_manual_aim ||
+           (app->fire_state!=APP_FIRE_IDLE &&
+            app->fire_state!=APP_FIRE_INDICATING &&
+            app->fire_state!=APP_FIRE_TIMED_OUT))return;
+        const int32_t angle=app->diagnostic_selected_angle_mdeg;
+        if(!app->config.hw.aim_move(app->config.hw.context,angle))return;
+        app->fire_snapshot_angle_mdeg=angle;
+        app->fire_snapshot_id=0u; /* no detected target */
+        app->fire_requested_at_ms=now;
+        app->fire_state=APP_FIRE_AIMING;
+        return;
+    }
     if(app->config.fire_snapshot_mode==0u) {
         Launcher_Request(&app->launcher,now);
         return;
