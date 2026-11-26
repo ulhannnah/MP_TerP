@@ -18,7 +18,18 @@ flowchart LR
     AIM --> LED["조준 완료 → LED 200ms 가상 표시"]
 ```
 
-**중요:** 초음파 센서가 SG90에 기계적으로 결합되지 않은 상태에서 `MP_TERP_CONFIRM_COUPLED_GEOMETRY`를 켜면 안 됩니다. 이 심볼이 없으면 자동 레이더는 **`g_stage_error=50`으로 시작을 차단**합니다. 실제 조립을 확인한 후에만 S32DS에 해당 심볼을 추가하세요. 현재 기본 모드가 Stage 5인 것은 소스 선택에 관한 것이며, 실물 구동 허가가 자동으로 주어지는 것은 아닙니다.
+## 현재 기본 동작 — 2가지 모드 (2026-11-26 수정)
+
+| 빌드 조건 | Servo | 초음파 | Tracker/Stepper/LED | 진단 |
+|---|---|---|---|---|
+| **기본 빌드 (결합 확인 심볼 없음)** | 자동 30~150° 왕복 | 고정 방향 Echo 거리 수집 | **2D 추적과 조준·LED 모두 비활성** | OLED에 `FIXED SENSOR`, LCD에 `FIXED 1D / NO ID` 표시 |
+| 센서와 SG90의 방향 결합을 실제 확인 후 `MP_TERP_CONFIRM_COUPLED_GEOMETRY` 명시 | 자동 30~150° 왕복 | 실제 Servo 관측 방향에 따른 Echo | 정상 표적 ID/ADC/SW2 조준/SW3 Home | 레이더 화면 표시 |
+
+**이제 심볼이 없다고 오류 50으로 멈추지 않는다.** 고정 센서의 거리에 서보의 명령 각도를 붙여 가짜 표적을 만드는 대신, **Servo와 1D 거리 센서의 개별 동작을 자동으로 보여주는 최종 모드 내 진단 경로**로 시작한다. 초음파 센서가 실제로 서보와 함께 회전하지 않으면 `MP_TERP_CONFIRM_COUPLED_GEOMETRY`를 정의하지 말 것.
+
+디버거 Expressions: `g_stage_state=2`, `g_stage_error=0`, `g_stage_geometry_mode=0`이면 진단 모드 정상. `g_stage_scan_command_mdeg`가 30000~150000 사이를 왕복하고 `g_stage_fixed_echo_samples`가 증가하는지 본다. `g_stage_fixed_echo_valid`와 `g_stage_fixed_echo_mm`은 각각 최근 Echo 유효 여부와 고정 방향 거리다. **가상 거리 값이 아니라 실제 Echo 입력을 사용**한다. 정상 2D 모드에서는 `g_stage_geometry_mode=1`이다.
+
+> 기계적 가동 범위/간섭·전원을 점검한 뒤 플래시할 것. Servo 실제 각도는 아직 측정·보정되지 않았으며, S32DS 빌드·실물 시험은 최신 변경 코드에서 아직 미검증이다.
 
 ## 새 브랜치 받아오기
 
@@ -52,7 +63,7 @@ bash tests/run_final_entry_tests.sh
 bash tests/run_final_runtime_tests.sh
 ```
 
-[GitHub Actions 자동 C 테스트 PASS](https://github.com/ulhannnah/MP_TerP/actions/runs/45767881240) — 합성 센서·모의 모터 기반 **호스트 소프트웨어** 검증만 의미합니다.
+[GitHub Actions 자동 C 테스트 PASS (진단 모드 포함)](https://github.com/ulhannnah/MP_TerP/actions/runs/45769687201) — 합성 센서·모의 모터 기반 **호스트 소프트웨어** 검증만 의미합니다.
 
 ## 확인 전까지 남는 항목
 
