@@ -18,9 +18,10 @@
  * -DMP_TERP_ALL_TEST_MAIN restores the original standalone motor tests.
  * Do not enable conflicting main selectors simultaneously.
  *
- * Stage 5 uses the 2026-11-25 pin assignment. Without explicit geometry
- * confirmation, motor and fixed-sonar diagnostics run but 2D tracking and
- * Stepper aiming are intentionally disabled.
+ * Stage 5 preserves the 2026-11-25 motor/sensor/display pins, but uses
+ * external PTC4/PTC5 buttons, PTB0 ADC and PTE0 relay signal.
+ * Without coupled geometry, manual ADC azimuth moves the Stepper without
+ * claiming an ultrasonic target bearing; the 2D tracker remains disabled.
  * Stage 1-3 still require the board configuration supplied by the caller.
  */
 #if defined(MP_TERP_STAGE_MAIN)
