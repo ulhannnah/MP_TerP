@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "gpio_io.h"
 #include "relay_policy.h"
+#include "final_io_pins.h"
 PCC_Type mock_pcc;
 static PORT_Type port_c,port_e;
 static GPIO_Type gpio_c,gpio_e;
@@ -11,14 +12,21 @@ static GPIO_Type gpio_c,gpio_e;
 static void test_buttons(void)
 {
     GpioButton aim,relay;
-    const GpioButtonConfig a={&port_c,&gpio_c,2u,4u,true,true};
-    const GpioButtonConfig b={&port_c,&gpio_c,2u,5u,true,true};
-    const uint32_t a_mask=1u<<4, b_mask=1u<<5;
+    const GpioButtonConfig a={&port_c,&gpio_c,2u,MP_TERP_FINAL_AIM_PORTC_PIN,true,true};
+    const GpioButtonConfig b={&port_c,&gpio_c,2u,MP_TERP_FINAL_RELAY_PORTC_PIN,true,true};
+    const uint32_t a_mask=1u<<MP_TERP_FINAL_AIM_PORTC_PIN;
+    const uint32_t b_mask=1u<<MP_TERP_FINAL_RELAY_PORTC_PIN;
+    assert(MP_TERP_FINAL_AIM_PORTC_PIN==8u &&
+           MP_TERP_FINAL_RELAY_PORTC_PIN==9u);
+    assert(MP_TERP_PortCDebugPinReserved(4u)); /* SWD_CLK */
+    assert(MP_TERP_PortCDebugPinReserved(5u)); /* JTAG_TDI */
+    assert(!MP_TERP_PortCDebugPinReserved(8u));
+    assert(!MP_TERP_PortCDebugPinReserved(9u));
     gpio_c.PDIR=a_mask|b_mask; /* Pullups: idle HIGH */
     assert(GpioButton_Init(&aim,&a));
     assert(GpioButton_Init(&relay,&b));
-    assert((port_c.PCR[4u]&PORT_PCR_PE_MASK)!=0u);
-    assert((port_c.PCR[5u]&PORT_PCR_PS_MASK)!=0u);
+    assert((port_c.PCR[MP_TERP_FINAL_AIM_PORTC_PIN]&PORT_PCR_PE_MASK)!=0u);
+    assert((port_c.PCR[MP_TERP_FINAL_RELAY_PORTC_PIN]&PORT_PCR_PS_MASK)!=0u);
     assert((port_c.PCR[4u]&(15u<<16))==PORT_PCR_IRQC(10u));
     assert(!GpioButton_TakePressDebounced(&aim,0u,35u));
     gpio_c.PDIR&=~a_mask;
@@ -85,6 +93,6 @@ static void test_relay_interlock(void)
 int main(void)
 {
     test_buttons();test_relay_output();test_relay_interlock();
-    puts("PASS: IRQ flag, Active-Low debounced press, active-high relay output, interlock and pulse expiry");
+    puts("PASS: PTC8/9 IRQ flag buttons, reserved PTC4/5 guarded, relay interlock and pulse expiry");
     return 0;
 }
