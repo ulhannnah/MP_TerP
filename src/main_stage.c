@@ -1,7 +1,9 @@
 #include "project_config.h"
 
 /*
- * Optional step-by-step board bring-up entry point.
+ * Final branch: Stage 5 is the default production-style app entry point.
+ * Stage 1..4 remain opt-in diagnostic modes.
+ * Geometry coupling is required before Stage 5 starts physical scanning.
  *
  * Build flags (S32DS project Symbols):
  *   MP_TERP_STAGE_MAIN
@@ -49,13 +51,51 @@ volatile uint32_t g_stage_selected_id;
 volatile int32_t g_stage_servo_request_mdeg; /* Stage 2: change in debugger to move */
 volatile int32_t g_stage_servo_applied_mdeg;
 volatile uint32_t g_stage_stepper_center_confirm; /* write 0x484F4D45 after physically aligning at scan center */
-volatile uint32_t g_stage_stepper_center_homed;   /* open loop, user confirmed only */
+volatile uint32_t g_stage_stepper_center_homed;   /* open loop, SW3 or debugger-confirmed */
+volatile int32_t g_stage_scan_command_mdeg;
+volatile uint32_t g_stage_fire_state;
+volatile uint32_t g_stage_wdog_cs_before;
+volatile uint32_t g_stage_wdog_cs_after;
 
 static void stage_fault(uint32_t error)
 {
     g_stage_error=error;
     g_stage_state=0xDEADu;
 }
+
+#if MP_TERP_STAGE == 5
+/* The independent ALL_TEST boot code already proved this WDOG unlock
+ * sequence on the target bench. Stage 5 must do the same BEFORE clock
+ * configuration or the MCU may reset during LCD initialization.
+ * Policy: disable WDOG for supervised university demo only, not production. */
+static bool stage_wdog_disable(void)
+{
+    uint32_t saved=MP_IrqSave();
+    g_stage_wdog_cs_before=WDOG->CS;
+    if((WDOG->CS & WDOG_CS_EN_MASK)!=0u) {
+        if((WDOG->CS & WDOG_CS_CMD32EN_MASK)!=0u) {
+            WDOG->CNT=0xD928C520u;
+        } else {
+            volatile uint16_t *cnt=(volatile uint16_t *)&WDOG->CNT;
+            *cnt=0xC520u;*cnt=0xD928u;
+        }
+        for(uint32_t i=0u;i<10000u;i++) {
+            if((WDOG->CS & WDOG_CS_ULK_MASK)!=0u)break;
+        }
+        if((WDOG->CS & WDOG_CS_ULK_MASK)!=0u) {
+            WDOG->TOVAL=0xFFFFu;
+            WDOG->CS=0x2100u;
+            for(uint32_t i=0u;i<10000u;i++) {
+                if((WDOG->CS & WDOG_CS_RCS_MASK)!=0u)break;
+            }
+        }
+    }
+    g_stage_wdog_cs_after=WDOG->CS;
+    bool ok=(g_stage_wdog_cs_after & WDOG_CS_EN_MASK)==0u;
+    MP_IrqRestore(saved);
+    return ok;
+}
+#endif
 
 #if MP_TERP_STAGE != 4
 extern bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg);
@@ -214,34 +254,44 @@ int main(void)
     g_stage_servo_applied_mdeg=0;
     g_stage_stepper_center_confirm=0u;
     g_stage_stepper_center_homed=0u;
+    g_stage_scan_command_mdeg=0;
+    g_stage_fire_state=0u;
+    g_stage_wdog_cs_before=0u;
+    g_stage_wdog_cs_after=0u;
 
 #if MP_TERP_STAGE == 4
     /* Synthetic bench: does not configure clocks or touch peripheral registers. */
     if(!init_bench())stage_fault(40u);
     else g_stage_state=1u;
 #elif MP_TERP_STAGE == 5
-#ifndef MP_TERP_CONFIRM_COUPLED_GEOMETRY
-    /*
-     * A fixed ultrasonic sensor CANNOT be labelled with a separate
-     * servo's angle: do not run physical radar in that configuration.
-     */
-    stage_fault(50u);
-#else
-    if(!MP_TERP_GetBoardConfig(&s_cfg))stage_fault(51u);
-    else if(s_cfg.ultrasonic.ftm!=FTM0 || s_cfg.ultrasonic.ftm_channel!=6u ||
-            (s_cfg.use_gpio_button && s_cfg.button_gpio.port!=PORTC))
-        stage_fault(53u); /* wired IRQ handlers match only these pin resources */
-    else if(!BoardSystem_Init(&s_board,&s_cfg))stage_fault(52u);
+    if(!stage_wdog_disable())stage_fault(55u);
     else {
-        MP_NvicClearPending(FTM0_Ch6_Ch7_IRQn);
-        MP_NvicEnable(FTM0_Ch6_Ch7_IRQn);
-        if(s_cfg.use_gpio_button) {
+#ifndef MP_TERP_CONFIRM_COUPLED_GEOMETRY
+        /* Fail closed: a stationary ultrasonic sensor cannot be assigned
+         * the servo's changing angle. No scan/motor I/O is initialized. */
+        stage_fault(50u);
+#else
+        if(!MP_TERP_GetBoardConfig(&s_cfg))stage_fault(51u);
+        else if(s_cfg.ultrasonic.ftm!=FTM0 ||
+                s_cfg.ultrasonic.ftm_channel!=6u ||
+                !s_cfg.use_gpio_button ||
+                s_cfg.button_gpio.port!=PORTC ||
+                s_cfg.button_gpio.pin!=12u ||
+                !s_cfg.use_home_button ||
+                s_cfg.home_button_gpio.port!=PORTC ||
+                s_cfg.home_button_gpio.pin!=13u)
+            stage_fault(53u); /* 2026-11-25 IRQ/pin map guard */
+        else if(!BoardSystem_Init(&s_board,&s_cfg))stage_fault(52u);
+        else {
+            MP_NvicClearPending(FTM0_Ch6_Ch7_IRQn);
+            MP_NvicEnable(FTM0_Ch6_Ch7_IRQn);
             MP_NvicClearPending(PORTC_IRQn);
             MP_NvicEnable(PORTC_IRQn);
+            /* App_Init already commanded the initial Servo scan angle. */
+            g_stage_state=1u;
         }
-        g_stage_state=1u;
-    }
 #endif
+    }
 #else
     if(!init_cfg_and_clock())stage_fault(10u);
     else {
@@ -295,6 +345,10 @@ int main(void)
         }
         BoardSystem_Update(&s_board);
         g_stage_tick_ms=TimerManager_GetTickMs();
+        g_stage_stepper_center_homed=
+            StepperController_IsHomed(&s_board.stepper)?1u:0u;
+        g_stage_scan_command_mdeg=s_board.app.scan.angle_mdeg;
+        g_stage_fire_state=(uint32_t)s_board.app.fire_state;
         g_stage_frames=s_board.app.processing.display_frame.frame_number;
         g_stage_candidates=s_board.app.processing.candidate_count;
         g_stage_selected_id=TargetSelector_GetId(&s_board.app.selector);
