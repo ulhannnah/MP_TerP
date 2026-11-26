@@ -2,6 +2,7 @@
 #include "clocks_and_modes.h"
 #include "oled.h"
 #include "aim_geometry.h"
+#include "relay_policy.h"
 #include <stddef.h>
 static bool servo_move(void *ctx,int32_t angle){
     BoardSystem *b=(BoardSystem *)ctx;
@@ -153,8 +154,8 @@ void BoardSystem_Update(BoardSystem *b){
     now=TimerManager_GetTickMs();
 
     /* Pulse must end even if the relay button remains held LOW. */
-    if(b->relay_active && (uint32_t)(now-b->relay_started_ms)>=
-                           b->config.relay_pulse_ms) {
+    if(MP_RelayPulseExpired(b->relay_active!=0u,now,
+                            b->relay_started_ms,b->config.relay_pulse_ms)) {
         GpioOutput_Write(&b->relay,false);
         b->relay_active=0u;
     }
@@ -175,8 +176,9 @@ void BoardSystem_Update(BoardSystem *b){
     }
 
     App_Update(&b->app,now);
-    if(b->app.fire_state==APP_FIRE_INDICATING &&
-       b->previous_fire_state!=(uint8_t)APP_FIRE_INDICATING)
+    if(MP_RelayNewAimCompleted(b->previous_fire_state,
+                               (uint8_t)b->app.fire_state,
+                               (uint8_t)APP_FIRE_INDICATING))
         b->relay_armed=1u;
     else if(b->app.fire_state==APP_FIRE_TIMED_OUT) {
         b->relay_armed=0u;
@@ -193,10 +195,10 @@ void BoardSystem_Update(BoardSystem *b){
         ++b->external_relay_press_count;
         /* Independent relay button: one bounded pulse only after a completed
          * Stepper software aim, never while moving or before software home. */
-        if(b->relay_armed && !b->relay_active &&
-           StepperController_IsHomed(&b->stepper) &&
-           StepperController_GetPosition(&b->stepper,NULL,NULL,
-                                         &moving)==STEPPER_OK && !moving) {
+        if(StepperController_GetPosition(&b->stepper,NULL,NULL,
+                                         &moving)==STEPPER_OK &&
+           MP_RelayCanPulse(b->relay_armed!=0u,b->relay_active!=0u,
+                            StepperController_IsHomed(&b->stepper),moving)) {
             GpioOutput_Write(&b->relay,true);
             b->relay_active=1u;
             b->relay_armed=0u;
