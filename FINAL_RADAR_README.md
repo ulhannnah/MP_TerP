@@ -1,6 +1,7 @@
 # MP_TerP — 최종 레이더 시스템 개발 브랜치
 
 **브랜치:** `final/radar-system-20261126` (2026-11-26 분기)  
+**외부 제어 변경:** [PTC4/PTC5 두 버튼·PTB0 ADC·PTE0 릴레이 핀맵과 시험 절차](docs/20261126_외부버튼_ADC_스텝조준_릴레이_GPIO_통합.md)  
 **기존 테스트 환경:** [`jun_GPT`](https://github.com/ulhannnah/MP_TerP/tree/jun_GPT) — 수정 없이 보존  
 **상세 설명:** [20261126_최종_레이더_브랜치_동작구조_및_검증.md](docs/20261126_최종_레이더_브랜치_동작구조_및_검증.md)
 
@@ -18,18 +19,28 @@ flowchart LR
     AIM --> LED["조준 완료 → LED 200ms 가상 표시"]
 ```
 
-## 현재 기본 동작 — 2가지 모드 (2026-11-26 수정)
+## 최종 브랜치 외부 조작 (2026-11-26 최신)
 
-| 빌드 조건 | Servo | 초음파 | Tracker/Stepper/LED | 진단 |
-|---|---|---|---|---|
-| **기본 빌드 (결합 확인 심볼 없음)** | 자동 30~150° 왕복 | 고정 방향 Echo 거리 수집 | **2D 추적과 조준·LED 모두 비활성** | OLED에 `FIXED SENSOR`, LCD에 `FIXED 1D / NO ID` 표시 |
-| 센서와 SG90의 방향 결합을 실제 확인 후 `MP_TERP_CONFIRM_COUPLED_GEOMETRY` 명시 | 자동 30~150° 왕복 | 실제 Servo 관측 방향에 따른 Echo | 정상 표적 ID/ADC/SW2 조준/SW3 Home | 레이더 화면 표시 |
+| 기능 | 핀 / 커넥터 | 동작 |
+|---|---|---|
+| 외부 AIM 버튼 Active-Low | **PTC4 / J3-12** | Falling-Edge IRQ 플래그 → 35ms 디바운스 → Stepper 각도 명령 |
+| 외부 RELAY 버튼 Active-Low | **PTC5 / J3-10** | 조준 완료 뒤에만 Relay 신호 1회 요청 |
+| Relay 출력 Active-High | **PTE0 / J3-06** | 평소 LOW, 출력 허용 시 HIGH 200ms 후 LOW |
+| 외부 가변저항 | **PTB0 / J4-05 / ADC0_SE4** | 1D에서는 수동 30~150° 각도, 결합된 2D에서는 표적 ID 1~3 |
+| 버튼 공통 | **GND / J3-11** | Active-Low 스위치의 다른 단자 |
 
-**이제 심볼이 없다고 오류 50으로 멈추지 않는다.** 고정 센서의 거리에 서보의 명령 각도를 붙여 가짜 표적을 만드는 대신, **Servo와 1D 거리 센서의 개별 동작을 자동으로 보여주는 최종 모드 내 진단 경로**로 시작한다. 초음파 센서가 실제로 서보와 함께 회전하지 않으면 `MP_TERP_CONFIRM_COUPLED_GEOMETRY`를 정의하지 말 것.
+**기존 261125 Servo/Stepper/초음파/OLED/LCD 핀은 그대로**지만, 최종 Stage 5의 **버튼과 ADC 입력 핀은 변경**되었다. `jun_GPT` Bring-up 테스트의 SW2/SW3/PTC14 설정은 바꾸지 않았다.
 
-디버거 Expressions: `g_stage_state=2`, `g_stage_error=0`, `g_stage_geometry_mode=0`이면 진단 모드 정상. `g_stage_scan_command_mdeg`가 30000~150000 사이를 왕복하고 `g_stage_fixed_echo_samples`가 증가하는지 본다. `g_stage_fixed_echo_valid`와 `g_stage_fixed_echo_mm`은 각각 최근 Echo 유효 여부와 고정 방향 거리다. **가상 거리 값이 아니라 실제 Echo 입력을 사용**한다. 정상 2D 모드에서는 `g_stage_geometry_mode=1`이다.
+### 물리 결합에 따른 동작
 
-> 기계적 가동 범위/간섭·전원을 점검한 뒤 플래시할 것. Servo 실제 각도는 아직 측정·보정되지 않았으며, S32DS 빌드·실물 시험은 최신 변경 코드에서 아직 미검증이다.
+- **기본 빌드, 센서 고정(결합 확인 심볼 없음):** SG90은 자동 30~150° 왕복하고 초음파는 고정 방향 거리를 읽는다. 외부 Pot으로 선택한 **수동 방향**에 AIM 버튼으로 Stepper를 이동하고, 완료 후 RELAY 버튼으로 PTE0 제어 펄스를 낸다. 실제 2D 표적 ID는 생성하지 않는다.
+- **실제 SG90-초음파 센서 결합 완료 후:** `MP_TERP_CONFIRM_COUPLED_GEOMETRY`를 명시하면 거리·각도 결합, 배경 차분, 표적 추적과 ADC ID 선택을 사용한다. AIM 버튼으로 선택 ID를 조준하고 RELAY 버튼으로 PTE0 신호를 낸다.
+
+Stepper는 출력축 엔코더/홈 센서가 없으므로 **전원을 넣기 전에 기구적으로 중심 90° 방향에 맞춰 둔 현재 위치를 상대 0°로 간주**한다. 펌웨어가 물리적 원점을 찾아 주는 것은 아니다. 릴레이 GPIO는 **모듈 신호 입력** 전용이므로 코일을 직접 연결하지 말고, 최초 테스트는 부하 없이 수행한다.
+
+S32DS Expressions: `g_stage_adc_raw`, `g_stage_adc_manual_angle_mdeg`, `g_stage_button_aim_count`, `g_stage_button_relay_count`, `g_stage_relay_armed`, `g_stage_relay_active`, `g_stage_relay_pulses`, `g_stage_error`.
+
+[외부 핀 배선·ISR/메인 루프 구조·시험 순서 문서](docs/20261126_외부버튼_ADC_스텝조준_릴레이_GPIO_통합.md)
 
 ## 새 브랜치 받아오기
 
@@ -61,9 +72,10 @@ bash tests/run_profile_tests.sh
 bash tests/run_lcd_async_tests.sh
 bash tests/run_final_entry_tests.sh
 bash tests/run_final_runtime_tests.sh
+bash tests/run_external_gpio_tests.sh
 ```
 
-[GitHub Actions 자동 C 테스트 PASS (진단 모드 포함)](https://github.com/ulhannnah/MP_TerP/actions/runs/45769687201) — 합성 센서·모의 모터 기반 **호스트 소프트웨어** 검증만 의미합니다.
+[GitHub Actions 자동 C 테스트 PASS (외부 GPIO/ADC/릴레이 포함)](https://github.com/ulhannnah/MP_TerP/actions/runs/45771817044) — 합성 센서·모의 모터 기반 **호스트 소프트웨어** 검증만 의미합니다.
 
 ## 확인 전까지 남는 항목
 
