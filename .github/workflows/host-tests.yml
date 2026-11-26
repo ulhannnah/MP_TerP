@@ -1,7 +1,7 @@
 name: C 모듈 호스트 단위 테스트
 'on':
   push:
-    branches: [jun_GPT]
+    branches: [jun_GPT, 'final/radar-system-20261126']
     paths:
       - 'src/**'
       - 'tests/**'
@@ -28,3 +28,5 @@ jobs:
         run: bash tests/run_profile_tests.sh
       - name: HD44780 비차단 LCD 큐/타이밍 테스트
         run: bash tests/run_lcd_async_tests.sh
+      - name: 최종 실행 모드 및 테스트 모드 분기 확인
+        run: bash tests/run_final_entry_tests.sh
