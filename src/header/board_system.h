@@ -37,8 +37,10 @@ typedef struct {
     void (*led_write)(void *user,bool on);
     uint8_t use_gpio_led;
     GpioOutputConfig led_gpio;
-    uint8_t use_gpio_button;
+    uint8_t use_gpio_button; /* SW2: selected target aim request */
     GpioButtonConfig button_gpio;
+    uint8_t use_home_button; /* SW3: confirm physically aligned center once */
+    GpioButtonConfig home_button_gpio;
     void *user;
 } BoardSystemConfig;
 
@@ -50,6 +52,7 @@ typedef struct {
     ADCChannel adc;
     GpioOutput led;
     GpioButton button;
+    GpioButton home_button;
     App app;
     BoardSystemConfig config;
     uint8_t adc_pending;
@@ -67,6 +70,7 @@ void BoardSystem_OnEchoCaptureIrq(BoardSystem *board);
 void BoardSystem_OnFireButton(BoardSystem *board);
 void BoardSystem_OnFireButtonPortIrq(BoardSystem *board);
 /* Only after physically verifying the Stepper points at the selected scan
- * center. Declares relative zero; NO mechanical homing move is performed. */
+ * center. Declares relative zero; NO mechanical homing move is performed.
+ * In the final build the SW3 event calls this exactly once. */
 bool BoardSystem_ConfirmStepperCenter(BoardSystem *board);
 #endif
