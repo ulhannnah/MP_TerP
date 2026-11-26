@@ -13,7 +13,9 @@
 
 - [2026-11-25 Stage 5 LCD 비차단 큐/1ms FSM 및 CI](../docs/20261125_LCD_비차단_큐기반_전송_및_CI_검증.md) — 주변장치 Bring-up 동기 모드와 최종 App 비차단 모드 비교, 예상 전송 시간과 검증 범위
 
-- [2026-11-26 최종 레이더 외부 IO 핀맵 및 ISR/Relay 신호](../docs/20261126_외부버튼_ADC_스텝조준_릴레이_GPIO_통합.md) — PTC4/PTC5/PTB0/PTE0 연결과 1D 수동조준·2D ID 선택 모드
+- [2026-11-26 최종 레이더 외부 IO 핀맵 및 ISR/Relay 신호](../docs/20261126_외부버튼_ADC_스텝조준_릴레이_GPIO_통합.md) — PTC8/PTC9/PTB0/PTE0 연결과 1D 수동조준·2D ID 선택 모드
+
+> **SWD/JTAG 핀 충돌 수정 (2026-11-26):** 이전에 안내했던 PTC4(J3-12)는 **SWD_CLK**, PTC5(J3-10)는 **JTAG_TDI**와 겹쳐 OpenSDA 디버깅을 막을 수 있다. **이 두 핀에 외부 버튼을 연결하지 말 것.** 최신 최종 브랜치는 외부 AIM=**PTC8(J6-09)**, RELAY 버튼=**PTC9(J6-11)**로 수정했고 소스에 디버그 핀 사용 거부 검사를 추가했다. 외부 릴레이 신호 PTE0와 외부 ADC PTB0는 그대로다. [NXP 기술지원: 디버그 핀을 GPIO로 변경하면 연결 실패 가능](https://community.nxp.com/t5/S32K/S32K144-Debugging-pins-are-disabled-How-to-recover-the-board/m-p/1885448).
 
 ## 발표 이미지
 
