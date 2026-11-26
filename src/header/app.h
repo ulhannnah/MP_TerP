@@ -48,6 +48,10 @@ typedef struct {
      * Defaults to 0 for older virtual/legacy tests. */
     uint8_t fire_snapshot_mode;
     uint32_t fire_aim_timeout_ms;
+    /* 1: Servo sweeps and Echo can be inspected separately, but the sensor
+     * is NOT mechanically coupled. Do not form angular frames/targets or aim.
+     * Set only in a non-coupled diagnostic build; normal App uses 0. */
+    uint8_t uncoupled_diagnostic;
 } AppConfig;
 
 typedef enum {
@@ -71,6 +75,10 @@ typedef struct {
     int32_t fire_snapshot_angle_mdeg;
     uint32_t fire_requested_at_ms;
     uint8_t fire_snapshot_id;
+    /* Raw fixed-direction sonar diagnostics. These do not encode a bearing. */
+    uint32_t diagnostic_samples;
+    uint32_t diagnostic_range_mm;
+    uint8_t diagnostic_valid;
     uint8_t initialized;
 } App;
 
