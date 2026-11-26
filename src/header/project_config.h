@@ -17,8 +17,9 @@
 #endif
 
 #if defined(MP_TERP_STAGE_MAIN) && MP_TERP_STAGE == 5
-/* Preserve the 2026-11-25 confirmed code pin assignments; do NOT waive
- * the independent sensor/servo mechanical-coupling check. */
+/* Preserve 2026-11-25 motor/sensor/display pins. Final Stage5 external
+ * buttons (PTC4/PTC5), ADC (PTB0) and relay (PTE0) are separately defined;
+ * never claim sensor/servo mechanical coupling without verification. */
 #ifndef MP_TERP_USE_BOARD_CONFIG_TEMPLATE
 #define MP_TERP_USE_BOARD_CONFIG_TEMPLATE
 #endif
