@@ -61,6 +61,13 @@ volatile uint32_t g_stage_geometry_mode; /* 0 = uncoupled fixed sonar; 1 = coupl
 volatile uint32_t g_stage_fixed_echo_samples;
 volatile uint32_t g_stage_fixed_echo_valid;
 volatile uint32_t g_stage_fixed_echo_mm;
+volatile uint32_t g_stage_adc_raw;
+volatile int32_t g_stage_adc_manual_angle_mdeg;
+volatile uint32_t g_stage_button_aim_count;
+volatile uint32_t g_stage_button_relay_count;
+volatile uint32_t g_stage_relay_active;
+volatile uint32_t g_stage_relay_armed;
+volatile uint32_t g_stage_relay_pulses;
 volatile uint32_t g_stage_wdog_cs_before;
 volatile uint32_t g_stage_wdog_cs_after;
 
@@ -267,6 +274,13 @@ int main(void)
     g_stage_fixed_echo_samples=0u;
     g_stage_fixed_echo_valid=0u;
     g_stage_fixed_echo_mm=0u;
+    g_stage_adc_raw=0u;
+    g_stage_adc_manual_angle_mdeg=0;
+    g_stage_button_aim_count=0u;
+    g_stage_button_relay_count=0u;
+    g_stage_relay_active=0u;
+    g_stage_relay_armed=0u;
+    g_stage_relay_pulses=0u;
     g_stage_wdog_cs_before=0u;
     g_stage_wdog_cs_after=0u;
 
@@ -281,10 +295,21 @@ int main(void)
             s_cfg.ultrasonic.ftm_channel!=6u ||
             !s_cfg.use_gpio_button ||
             s_cfg.button_gpio.port!=PORTC ||
-            s_cfg.button_gpio.pin!=12u ||
-            !s_cfg.use_home_button ||
-            s_cfg.home_button_gpio.port!=PORTC ||
-            s_cfg.home_button_gpio.pin!=13u)
+            s_cfg.button_gpio.pin!=4u ||
+            !s_cfg.button_gpio.active_low ||
+            !s_cfg.use_relay_button ||
+            s_cfg.relay_button_gpio.port!=PORTC ||
+            s_cfg.relay_button_gpio.pin!=5u ||
+            !s_cfg.relay_button_gpio.active_low ||
+            !s_cfg.use_relay_output ||
+            s_cfg.relay_output_gpio.port!=PORTE ||
+            s_cfg.relay_output_gpio.pin!=0u ||
+            !s_cfg.relay_output_gpio.active_high ||
+            !s_cfg.use_external_adc_pin ||
+            s_cfg.external_adc_port!=PORTB ||
+            s_cfg.external_adc_pin!=0u ||
+            s_cfg.adc.adc!=ADC0 ||
+            s_cfg.adc.channel!=4u)
         stage_fault(53u); /* 2026-11-25 IRQ/pin map guard */
     else {
 #ifndef MP_TERP_CONFIRM_COUPLED_GEOMETRY
@@ -368,6 +393,14 @@ int main(void)
         g_stage_fixed_echo_samples=s_board.app.diagnostic_samples;
         g_stage_fixed_echo_valid=s_board.app.diagnostic_valid;
         g_stage_fixed_echo_mm=s_board.app.diagnostic_range_mm;
+        g_stage_adc_raw=s_board.app.last_adc_raw;
+        g_stage_adc_manual_angle_mdeg=
+            s_board.app.diagnostic_selected_angle_mdeg;
+        g_stage_button_aim_count=s_board.external_aim_press_count;
+        g_stage_button_relay_count=s_board.external_relay_press_count;
+        g_stage_relay_active=s_board.relay_active;
+        g_stage_relay_armed=s_board.relay_armed;
+        g_stage_relay_pulses=s_board.relay_pulse_count;
         g_stage_frames=s_board.app.processing.display_frame.frame_number;
         g_stage_candidates=s_board.app.processing.candidate_count;
         g_stage_selected_id=TargetSelector_GetId(&s_board.app.selector);
