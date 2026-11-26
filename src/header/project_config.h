@@ -1,11 +1,12 @@
 #ifndef MP_TERP_PROJECT_CONFIG_H
 #define MP_TERP_PROJECT_CONFIG_H
 
-/* FINAL branch defaults to the integrated Stage 5 application.
- * Bring-up remains selectable explicitly with -DMP_TERP_ALL_TEST_MAIN,
- * or -DMP_TERP_SMOKE_MAIN for the no-hardware smoke test.
- * Geometry confirmation is NEVER inferred: physically couple the ultrasonic
- * sensor with the SG90 before defining MP_TERP_CONFIRM_COUPLED_GEOMETRY.
+/* FINAL branch defaults to integrated Stage 5.
+ * No geometry confirmation -> honest uncoupled diagnostic:
+ * autonomous Servo sweep + fixed-direction Echo, no 2D target/Stepper aim.
+ * Only after mechanically coupling the sensor with the SG90 may an S32DS
+ * build explicitly define MP_TERP_CONFIRM_COUPLED_GEOMETRY for real radar.
+ * -DMP_TERP_ALL_TEST_MAIN and -DMP_TERP_SMOKE_MAIN preserve debug modes.
  */
 #if !defined(MP_TERP_SMOKE_MAIN) && !defined(MP_TERP_STAGE_MAIN) && \
     !defined(MP_TERP_ALL_TEST_MAIN) && !defined(MP_TERP_USE_EXAMPLE_MAIN)
