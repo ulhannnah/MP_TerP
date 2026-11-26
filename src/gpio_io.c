@@ -36,9 +36,11 @@ bool GpioOutput_Init(GpioOutput *out,const GpioOutputConfig *cfg){
     mask=(uint32_t)1u<<cfg->pin;
     PCC->PCCn[cfg->port_pcc_index]|=PCC_PCCn_CGC_MASK;
     cfg->port->PCR[cfg->pin]=PORT_PCR_MUX(1);
-    cfg->gpio->PDDR|=mask;
+    /* Set inactive output latch BEFORE switching the pin to an output.
+     * This is essential for active-high relay inputs at boot. */
     if(cfg->active_high)cfg->gpio->PCOR=mask;
     else cfg->gpio->PSOR=mask;
+    cfg->gpio->PDDR|=mask;
     out->initialized=1u;return true;
 }
 void GpioOutput_Write(GpioOutput *out,bool active){
@@ -52,6 +54,7 @@ bool GpioButton_Init(GpioButton *btn,const GpioButtonConfig *cfg){
     uint32_t pcr;
     if(!btn||!cfg||!valid_pin(cfg->port,cfg->gpio,cfg->pin))return false;
     btn->config=*cfg;btn->pending=0u;btn->initialized=0u;
+    btn->debounce_state=0u;btn->transition_ms=0u;
     PCC->PCCn[cfg->port_pcc_index]|=PCC_PCCn_CGC_MASK;
     pcr=PORT_PCR_MUX(1);
     if(cfg->internal_pullup)pcr|=PORT_PCR_PE_MASK|PORT_PCR_PS_MASK;
@@ -78,4 +81,50 @@ bool GpioButton_TakePress(GpioButton *btn){
     pressed=(btn->pending!=0u);btn->pending=0u;
     gpio_exit_critical(primask);
     return pressed;
+}
+
+/* PORT IRQ records the falling edge, but NEVER executes application work.
+ * Foreground polling validates a stable active level and a stable release. */
+bool GpioButton_TakePressDebounced(GpioButton *btn,uint32_t now_ms,
+                                  uint32_t debounce_ms)
+{
+    uint32_t bit;
+    bool active,irq;
+    if(!btn||!btn->initialized)return false;
+    bit=((uint32_t)1u<<btn->config.pin);
+    active=(btn->config.gpio->PDIR&bit)!=0u;
+    if(btn->config.active_low)active=!active;
+    irq=GpioButton_TakePress(btn);
+    switch(btn->debounce_state) {
+    case 0u: /* armed: only an IRQ can start a new press */
+        if(irq) {
+            btn->transition_ms=now_ms;
+            btn->debounce_state=1u;
+        }
+        break;
+    case 1u: /* debounce press */
+        if((uint32_t)(now_ms-btn->transition_ms)>=debounce_ms) {
+            if(active) {
+                btn->debounce_state=2u;
+                return true;
+            }
+            btn->debounce_state=0u;
+        }
+        break;
+    case 2u: /* pressed: ignore further falling-edge bounce IRQs */
+        if(!active) {
+            btn->debounce_state=3u;
+            btn->transition_ms=now_ms;
+        }
+        break;
+    case 3u: /* wait for a stable release before rearming */
+        if(active)btn->debounce_state=2u;
+        else if((uint32_t)(now_ms-btn->transition_ms)>=debounce_ms)
+            btn->debounce_state=0u;
+        break;
+    default:
+        btn->debounce_state=0u;
+        break;
+    }
+    return false;
 }
