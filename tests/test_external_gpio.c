@@ -27,7 +27,7 @@ static void test_buttons(void)
     assert(GpioButton_Init(&relay,&b));
     assert((port_c.PCR[MP_TERP_FINAL_AIM_PORTC_PIN]&PORT_PCR_PE_MASK)!=0u);
     assert((port_c.PCR[MP_TERP_FINAL_RELAY_PORTC_PIN]&PORT_PCR_PS_MASK)!=0u);
-    assert((port_c.PCR[4u]&(15u<<16))==PORT_PCR_IRQC(10u));
+    assert((port_c.PCR[MP_TERP_FINAL_AIM_PORTC_PIN]&(15u<<16))==PORT_PCR_IRQC(10u));
     assert(!GpioButton_TakePressDebounced(&aim,0u,35u));
     gpio_c.PDIR&=~a_mask;
     port_c.ISFR=a_mask;GpioButton_OnPortIrq(&aim);
