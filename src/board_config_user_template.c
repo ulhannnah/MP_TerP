@@ -81,12 +81,39 @@ bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg)
     /* Stage 5 only: no auto-sweep in the default ALL_TEST firmware.
      * Requires physically coupled scan direction and explicit Stepper home. */
     cfg->application=MP_TERP_Radar120Profile();
-    /* SW2 PTC12 is FIRE/aim request; SW3 PTC13 confirms manually aligned
-     * Stepper zero at the radar's 90 degree center. Pins unchanged from
-     * 2026-11-25 bring-up. No mechanical homing sensor is installed. */
-    cfg->use_home_button=1u;
-    cfg->home_button_gpio=cfg->button_gpio;
-    cfg->home_button_gpio.pin=13u;
+    /* Final external controls (only Stage5; ALL_TEST is unchanged):
+     * AIM button: PTC4 / J3-12, Active-Low to GND, falling-edge IRQ.
+     * RELAY button: PTC5 / J3-10, Active-Low to GND, falling-edge IRQ.
+     * RELAY_OUT: PTE0 / J3-06, Active-High logic signal; default LOW.
+     * External potentiometer wiper: PTB0 / J4-05 / ADC0_SE4.
+     * PTB0 replaces PTC14, which is wired to the on-board potentiometer.
+     * Confirm header revision / 3.3V-or-5V reference BEFORE connecting.
+     * No new hardware pin is used in the original ALL_TEST branch.
+     */
+    cfg->button_gpio=(GpioButtonConfig){PORTC,PTC,PCC_PORTC_INDEX,4u,
+                                       true,true};
+    cfg->use_home_button=0u;
+    cfg->use_relay_button=1u;
+    cfg->relay_button_gpio=(GpioButtonConfig){PORTC,PTC,PCC_PORTC_INDEX,5u,
+                                             true,true};
+    cfg->use_relay_output=1u;
+    cfg->relay_output_gpio=(GpioOutputConfig){PORTE,PTE,PCC_PORTE_INDEX,0u,true};
+    cfg->relay_pulse_ms=200u;
+    cfg->external_button_debounce_ms=35u;
+    /* Manually position the output shaft at scan center (90deg) while off.
+     * After boot we DECLARE that position as the relative zero (no sensor). */
+    cfg->assume_stepper_center_on_boot=1u;
+
+    cfg->adc=(ADCChannelConfig){ADC0,PCC_ADC0_INDEX,1u,4u,5000u};
+    cfg->use_external_adc_pin=1u;
+    cfg->external_adc_port=PORTB;
+    cfg->external_adc_port_pcc_index=PCC_PORTB_INDEX;
+    cfg->external_adc_pin=0u;
+    /* In uncoupled setup the ADC selects manual 30~150deg azimuth, not ID.
+     * Once mechanically coupled, it selects target ID 1..3 as before. */
+#ifndef MP_TERP_CONFIRM_COUPLED_GEOMETRY
+    cfg->application.diagnostic_manual_aim=1u;
+#endif
     /* Stage 5 queues status lines and advances at most one GPIO edge/tick.
      * ALL_TEST keeps its previously verified synchronous WriteLine. */
     cfg->lcd_write=LCDHD44780_QueueLine;
