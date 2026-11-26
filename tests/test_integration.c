@@ -35,6 +35,9 @@ void OLED_FillRect(int16_t x,int16_t y,int16_t w,int16_t h,uint8_t c){
 void OLED_DrawChar(int16_t x,int16_t y,char c,uint8_t sz,uint8_t color){
     (void)x;(void)y;(void)c;(void)sz;(void)color;++draw_count;
 }
+void OLED_DrawString(int16_t x,int16_t y,const char *str,uint8_t sz,uint8_t color){
+    (void)x;(void)y;(void)str;(void)sz;(void)color;++draw_count;
+}
 static bool flush(void *ctx){(void)ctx;return true;}
 static bool move(void *ctx,int32_t a){(void)ctx;(void)a;return true;}
 static uint32_t mock_range=1000u;
