@@ -52,6 +52,9 @@ typedef struct {
      * is NOT mechanically coupled. Do not form angular frames/targets or aim.
      * Set only in a non-coupled diagnostic build; normal App uses 0. */
     uint8_t uncoupled_diagnostic;
+    /* Enable ADC->manual Stepper angle in the uncoupled bench mode. A manually
+     * selected bearing is NOT a detected target. */
+    uint8_t diagnostic_manual_aim;
 } AppConfig;
 
 typedef enum {
@@ -79,6 +82,8 @@ typedef struct {
     uint32_t diagnostic_samples;
     uint32_t diagnostic_range_mm;
     uint8_t diagnostic_valid;
+    uint16_t last_adc_raw;
+    int32_t diagnostic_selected_angle_mdeg;
     uint8_t initialized;
 } App;
 
