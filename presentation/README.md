@@ -13,6 +13,8 @@
 
 - [2026-11-25 Stage 5 LCD 비차단 큐/1ms FSM 및 CI](../docs/20261125_LCD_비차단_큐기반_전송_및_CI_검증.md) — 주변장치 Bring-up 동기 모드와 최종 App 비차단 모드 비교, 예상 전송 시간과 검증 범위
 
+- [2026-11-26 최종 레이더 외부 IO 핀맵 및 ISR/Relay 신호](../docs/20261126_외부버튼_ADC_스텝조준_릴레이_GPIO_통합.md) — PTC4/PTC5/PTB0/PTE0 연결과 1D 수동조준·2D ID 선택 모드
+
 ## 발표 이미지
 
 - [원래 목표: 서보와 초음파 센서 일체형](images/20261125_goal_coupled_scan.svg)
