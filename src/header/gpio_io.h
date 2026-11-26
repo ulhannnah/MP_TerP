@@ -24,11 +24,17 @@ typedef struct {
 } GpioButtonConfig;
 typedef struct {
     GpioButtonConfig config;
-    volatile uint8_t pending;
+    volatile uint8_t pending; /* ISR sets; foreground consumes */
+    uint8_t debounce_state;   /* 0 armed, 1 press settling, 2 held, 3 release settling */
+    uint32_t transition_ms;
     uint8_t initialized;
 } GpioButton;
 /* PORTx_IRQHandler must call GpioButton_OnPortIrq; app enables NVIC. */
 bool GpioButton_Init(GpioButton *btn,const GpioButtonConfig *cfg);
 void GpioButton_OnPortIrq(GpioButton *btn);
 bool GpioButton_TakePress(GpioButton *btn);
+/* ISR flag -> foreground debounce with GPIO level verification. Exactly one
+ * event per press and a stable release required before rearming. */
+bool GpioButton_TakePressDebounced(GpioButton *btn,uint32_t now_ms,
+                                  uint32_t debounce_ms);
 #endif
