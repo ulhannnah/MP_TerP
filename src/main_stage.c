@@ -3,7 +3,8 @@
 /*
  * Final branch: Stage 5 is the default production-style app entry point.
  * Stage 1..4 remain opt-in diagnostic modes.
- * Geometry coupling is required before Stage 5 starts physical scanning.
+ * Without coupled geometry Stage 5 uses honest, uncoupled 1D diagnostics
+ * with autonomous Servo motion and no false 2D target/aim processing.
  *
  * Build flags (S32DS project Symbols):
  *   MP_TERP_STAGE_MAIN
@@ -11,14 +12,15 @@
  *   MP_TERP_STAGE=2   servo PWM only
  *   MP_TERP_STAGE=3   ultrasonic Trigger/Echo only
  *   MP_TERP_STAGE=4   virtual echo + production App (NO peripherals)
- *   MP_TERP_STAGE=5   full BoardSystem (REQUIRES geometry confirmation)
+ *   MP_TERP_STAGE=5   full BoardSystem (uncoupled 1D or coupled 2D)
  *
  * On the final branch, no -D main selector means Stage 5 by default.
  * -DMP_TERP_ALL_TEST_MAIN restores the original standalone motor tests.
  * Do not enable conflicting main selectors simultaneously.
  *
- * Stage 5 uses the 2026-11-25 tested pin assignment, but requires an
- * independently verified sensor/servo mechanical coupling flag.
+ * Stage 5 uses the 2026-11-25 pin assignment. Without explicit geometry
+ * confirmation, motor and fixed-sonar diagnostics run but 2D tracking and
+ * Stepper aiming are intentionally disabled.
  * Stage 1-3 still require the board configuration supplied by the caller.
  */
 #if defined(MP_TERP_STAGE_MAIN)
@@ -55,6 +57,10 @@ volatile uint32_t g_stage_stepper_center_confirm; /* write 0x484F4D45 after phys
 volatile uint32_t g_stage_stepper_center_homed;   /* open loop, SW3 or debugger-confirmed */
 volatile int32_t g_stage_scan_command_mdeg;
 volatile uint32_t g_stage_fire_state;
+volatile uint32_t g_stage_geometry_mode; /* 0 = uncoupled fixed sonar; 1 = coupled 2D */
+volatile uint32_t g_stage_fixed_echo_samples;
+volatile uint32_t g_stage_fixed_echo_valid;
+volatile uint32_t g_stage_fixed_echo_mm;
 volatile uint32_t g_stage_wdog_cs_before;
 volatile uint32_t g_stage_wdog_cs_after;
 
@@ -257,6 +263,10 @@ int main(void)
     g_stage_stepper_center_homed=0u;
     g_stage_scan_command_mdeg=0;
     g_stage_fire_state=0u;
+    g_stage_geometry_mode=0u;
+    g_stage_fixed_echo_samples=0u;
+    g_stage_fixed_echo_valid=0u;
+    g_stage_fixed_echo_mm=0u;
     g_stage_wdog_cs_before=0u;
     g_stage_wdog_cs_after=0u;
 
@@ -266,23 +276,29 @@ int main(void)
     else g_stage_state=1u;
 #elif MP_TERP_STAGE == 5
     if(!stage_wdog_disable())stage_fault(55u);
+    else if(!MP_TERP_GetBoardConfig(&s_cfg))stage_fault(51u);
+    else if(s_cfg.ultrasonic.ftm!=FTM0 ||
+            s_cfg.ultrasonic.ftm_channel!=6u ||
+            !s_cfg.use_gpio_button ||
+            s_cfg.button_gpio.port!=PORTC ||
+            s_cfg.button_gpio.pin!=12u ||
+            !s_cfg.use_home_button ||
+            s_cfg.home_button_gpio.port!=PORTC ||
+            s_cfg.home_button_gpio.pin!=13u)
+        stage_fault(53u); /* 2026-11-25 IRQ/pin map guard */
     else {
 #ifndef MP_TERP_CONFIRM_COUPLED_GEOMETRY
-        /* Fail closed: a stationary ultrasonic sensor cannot be assigned
-         * the servo's changing angle. No scan/motor I/O is initialized. */
-        stage_fault(50u);
+        /* Default: servo sweeps and fixed Echo can be exercised, but
+         * impossible angle/distance associations are NEVER processed. */
+        s_cfg.application.uncoupled_diagnostic=1u;
+        g_stage_geometry_mode=0u;
 #else
-        if(!MP_TERP_GetBoardConfig(&s_cfg))stage_fault(51u);
-        else if(s_cfg.ultrasonic.ftm!=FTM0 ||
-                s_cfg.ultrasonic.ftm_channel!=6u ||
-                !s_cfg.use_gpio_button ||
-                s_cfg.button_gpio.port!=PORTC ||
-                s_cfg.button_gpio.pin!=12u ||
-                !s_cfg.use_home_button ||
-                s_cfg.home_button_gpio.port!=PORTC ||
-                s_cfg.home_button_gpio.pin!=13u)
-            stage_fault(53u); /* 2026-11-25 IRQ/pin map guard */
-        else if(!BoardSystem_Init(&s_board,&s_cfg))stage_fault(52u);
+        /* Define this ONLY after physically coupling the Echo sensor
+         * to the Servo and confirming its bearing/zero relationship. */
+        s_cfg.application.uncoupled_diagnostic=0u;
+        g_stage_geometry_mode=1u;
+#endif
+        if(!BoardSystem_Init(&s_board,&s_cfg))stage_fault(52u);
         else {
             MP_NvicClearPending(FTM0_Ch6_Ch7_IRQn);
             MP_NvicEnable(FTM0_Ch6_Ch7_IRQn);
@@ -291,7 +307,6 @@ int main(void)
             /* App_Init already commanded the initial Servo scan angle. */
             g_stage_state=1u;
         }
-#endif
     }
 #else
     if(!init_cfg_and_clock())stage_fault(10u);
@@ -350,6 +365,9 @@ int main(void)
             StepperController_IsHomed(&s_board.stepper)?1u:0u;
         g_stage_scan_command_mdeg=s_board.app.scan.angle_mdeg;
         g_stage_fire_state=(uint32_t)s_board.app.fire_state;
+        g_stage_fixed_echo_samples=s_board.app.diagnostic_samples;
+        g_stage_fixed_echo_valid=s_board.app.diagnostic_valid;
+        g_stage_fixed_echo_mm=s_board.app.diagnostic_range_mm;
         g_stage_frames=s_board.app.processing.display_frame.frame_number;
         g_stage_candidates=s_board.app.processing.candidate_count;
         g_stage_selected_id=TargetSelector_GetId(&s_board.app.selector);
