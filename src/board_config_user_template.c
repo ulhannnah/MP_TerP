@@ -1,8 +1,10 @@
 #include "project_config.h"
 
-/* Provisional EVB-Q100 bench profile. Verify actual shield wiring first.
- * Enable MP_TERP_USE_BOARD_CONFIG_TEMPLATE and MP_TERP_CONFIRM_PINMAP.
- * Independent peripheral test only. No automatic tracking or motor sweep.
+/* 2026-11-25 EVB-Q100 pin profile is preserved in the final branch.
+ * Stage 5 uses the automatic 120 degree radar application. Standalone
+ * ALL_TEST remains explicitly selectable for independent motor tests.
+ * Before Stage 5 hardware operation, verify sensor/servo physical coupling,
+ * mechanical clearances, power rails and all shield wiring.
  */
 #if defined(MP_TERP_USE_BOARD_CONFIG_TEMPLATE) && (defined(MP_TERP_ALL_TEST_MAIN) || (defined(MP_TERP_STAGE_MAIN) && MP_TERP_STAGE != 4))
 #include "board_system.h"
