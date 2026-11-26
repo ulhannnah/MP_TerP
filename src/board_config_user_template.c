@@ -79,6 +79,12 @@ bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg)
     /* Stage 5 only: no auto-sweep in the default ALL_TEST firmware.
      * Requires physically coupled scan direction and explicit Stepper home. */
     cfg->application=MP_TERP_Radar120Profile();
+    /* SW2 PTC12 is FIRE/aim request; SW3 PTC13 confirms manually aligned
+     * Stepper zero at the radar's 90 degree center. Pins unchanged from
+     * 2026-11-25 bring-up. No mechanical homing sensor is installed. */
+    cfg->use_home_button=1u;
+    cfg->home_button_gpio=cfg->button_gpio;
+    cfg->home_button_gpio.pin=13u;
     /* Stage 5 queues status lines and advances at most one GPIO edge/tick.
      * ALL_TEST keeps its previously verified synchronous WriteLine. */
     cfg->lcd_write=LCDHD44780_QueueLine;
