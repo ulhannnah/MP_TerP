@@ -2,6 +2,7 @@
 #include "oled.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 static bool servo_cb(void *ctx,int32_t angle) {
     App *app=(App *)ctx;
@@ -38,6 +39,7 @@ bool App_Init(App *app,const AppConfig *cfg,uint32_t now){
        !cfg->hw.aim_position||!cfg->hw.led_write||
        cfg->oled_period_ms==0u||cfg->lcd_period_ms==0u||
        cfg->aim_tolerance_mdeg>360000u||cfg->maximum_display_distance_mm==0u||
+       cfg->uncoupled_diagnostic>1u||
        (cfg->fire_snapshot_mode!=0u &&
         (cfg->fire_aim_timeout_ms==0u || !cfg->hw.aim_stop)))
         return false;
@@ -81,6 +83,9 @@ bool App_Init(App *app,const AppConfig *cfg,uint32_t now){
     app->fire_snapshot_id=0u;
     app->fire_snapshot_angle_mdeg=0;
     app->fire_requested_at_ms=0u;
+    app->diagnostic_samples=0u;
+    app->diagnostic_range_mm=0u;
+    app->diagnostic_valid=0u;
     RadarProcessing_RequestCalibration(&app->processing);
     if(!RadarScan_Start(&app->scan,now))return false;
     app->initialized=1u;
@@ -99,6 +104,42 @@ void App_Update(App *app,uint32_t now){
     if(app->config.hw.echo_update)
         app->config.hw.echo_update(app->config.hw.context,now);
     RadarScan_Update(&app->scan,now);
+    if(app->config.uncoupled_diagnostic) {
+        /* Sensor and Servo are physically separate: sweep the Servo and
+         * read FIXED-direction Echo for bring-up, but DO NOT associate
+         * these distances with the commanded Servo angle. */
+        if(RadarScan_TakeSample(&app->scan,&sample)) {
+            ++app->diagnostic_samples;
+            app->diagnostic_valid=sample.valid?1u:0u;
+            app->diagnostic_range_mm=sample.valid?sample.distance_mm:0u;
+        }
+        /* Never fill 2D frames, create target IDs, or command the Stepper.
+         * Display unmistakable diagnostic labels, not a fake radar map. */
+        if(app->config.hw.oled_flush &&
+           (uint32_t)(now-app->last_oled_ms)>=app->config.oled_period_ms) {
+            app->last_oled_ms=now;
+            OLED_Clear();
+            OLED_DrawString(0,0,"FIXED SENSOR",1u,OLED_WHITE);
+            OLED_DrawString(0,16,"SERVO SWEEP ONLY",1u,OLED_WHITE);
+            OLED_DrawString(0,32,"NO 2D TARGETS",1u,OLED_WHITE);
+            (void)app->config.hw.oled_flush(app->config.hw.context);
+        }
+        if(app->config.hw.lcd_write &&
+           (uint32_t)(now-app->last_lcd_ms)>=app->config.lcd_period_ms) {
+            char text[17];
+            app->last_lcd_ms=now;
+            if(app->diagnostic_valid) {
+                (void)snprintf(text,sizeof(text),"ECHO:%lumm",
+                               (unsigned long)app->diagnostic_range_mm);
+            } else {
+                (void)snprintf(text,sizeof(text),"ECHO:INVALID");
+            }
+            (void)app->config.hw.lcd_write(app->config.hw.context,0u,text);
+            (void)app->config.hw.lcd_write(app->config.hw.context,1u,
+                                           "FIXED 1D / NO ID");
+        }
+        return;
+    }
     if(RadarScan_TakeSample(&app->scan,&sample)) {
         if(RadarProcessing_PushSample(&app->processing,&sample))
             RadarProcessing_ProcessCompleted(&app->processing,now);
@@ -173,6 +214,8 @@ void App_RequestFire(App *app,uint32_t now){
     RadarTarget target;
     uint8_t id;
     if(!app||!app->initialized)return;
+    /* Never allow a Stepper aim/LED command without real angular tracking. */
+    if(app->config.uncoupled_diagnostic)return;
     if(app->config.fire_snapshot_mode==0u) {
         Launcher_Request(&app->launcher,now);
         return;
