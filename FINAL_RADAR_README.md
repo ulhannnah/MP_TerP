@@ -1,7 +1,9 @@
 # MP_TerP — 최종 레이더 시스템 개발 브랜치
 
+> **SWD/JTAG 핀 충돌 수정 (2026-11-26):** 이전에 안내했던 PTC4(J3-12)는 **SWD_CLK**, PTC5(J3-10)는 **JTAG_TDI**와 겹쳐 OpenSDA 디버깅을 막을 수 있다. **이 두 핀에 외부 버튼을 연결하지 말 것.** 최신 최종 브랜치는 외부 AIM=**PTC8(J6-09)**, RELAY 버튼=**PTC9(J6-11)**로 수정했고 소스에 디버그 핀 사용 거부 검사를 추가했다. 외부 릴레이 신호 PTE0와 외부 ADC PTB0는 그대로다. [NXP 기술지원: 디버그 핀을 GPIO로 변경하면 연결 실패 가능](https://community.nxp.com/t5/S32K/S32K144-Debugging-pins-are-disabled-How-to-recover-the-board/m-p/1885448).
+
 **브랜치:** `final/radar-system-20261126` (2026-11-26 분기)  
-**외부 제어 변경:** [PTC4/PTC5 두 버튼·PTB0 ADC·PTE0 릴레이 핀맵과 시험 절차](docs/20261126_외부버튼_ADC_스텝조준_릴레이_GPIO_통합.md)  
+**외부 제어 변경:** [PTC8/PTC9 두 버튼·PTB0 ADC·PTE0 릴레이 핀맵과 시험 절차](docs/20261126_외부버튼_ADC_스텝조준_릴레이_GPIO_통합.md)  
 **기존 테스트 환경:** [`jun_GPT`](https://github.com/ulhannnah/MP_TerP/tree/jun_GPT) — 수정 없이 보존  
 **상세 설명:** [20261126_최종_레이더_브랜치_동작구조_및_검증.md](docs/20261126_최종_레이더_브랜치_동작구조_및_검증.md)
 
@@ -23,8 +25,8 @@ flowchart LR
 
 | 기능 | 핀 / 커넥터 | 동작 |
 |---|---|---|
-| 외부 AIM 버튼 Active-Low | **PTC4 / J3-12** | Falling-Edge IRQ 플래그 → 35ms 디바운스 → Stepper 각도 명령 |
-| 외부 RELAY 버튼 Active-Low | **PTC5 / J3-10** | 조준 완료 뒤에만 Relay 신호 1회 요청 |
+| 외부 AIM 버튼 Active-Low | **PTC8 / J6-09** | Falling-Edge IRQ 플래그 → 35ms 디바운스 → Stepper 각도 명령 |
+| 외부 RELAY 버튼 Active-Low | **PTC9 / J6-11** | 조준 완료 뒤에만 Relay 신호 1회 요청 |
 | Relay 출력 Active-High | **PTE0 / J3-06** | 평소 LOW, 출력 허용 시 HIGH 200ms 후 LOW |
 | 외부 가변저항 | **PTB0 / J4-05 / ADC0_SE4** | 1D에서는 수동 30~150° 각도, 결합된 2D에서는 표적 ID 1~3 |
 | 버튼 공통 | **GND / J3-11** | Active-Low 스위치의 다른 단자 |
