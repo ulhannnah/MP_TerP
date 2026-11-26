@@ -20,6 +20,8 @@ typedef struct {
     void (*echo_update)(void *context,uint32_t now_ms);
     bool (*adc_read)(void *context,uint16_t *raw);
     bool (*aim_move)(void *context,int32_t angle_mdeg);
+    /* Required for snapshot aim: cancel step timer and release coils on timeout. */
+    bool (*aim_stop)(void *context);
     bool (*aim_position)(void *context,int32_t *angle_mdeg,bool *moving);
     bool (*oled_flush)(void *context);
     bool (*lcd_write)(void *context,uint8_t row,const char *text);
