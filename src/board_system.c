@@ -75,25 +75,51 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
        (cfg->lcd_write && !cfg->lcd_init) ||
        (cfg->use_home_button && (!cfg->use_gpio_button ||
           cfg->home_button_gpio.port!=cfg->button_gpio.port ||
-          cfg->home_button_gpio.pin==cfg->button_gpio.pin)))
+          cfg->home_button_gpio.pin==cfg->button_gpio.pin)) ||
+       (cfg->use_relay_button &&
+          (!cfg->use_gpio_button || !cfg->use_relay_output ||
+           cfg->relay_button_gpio.port!=cfg->button_gpio.port ||
+           cfg->relay_button_gpio.pin==cfg->button_gpio.pin ||
+           !cfg->relay_button_gpio.active_low ||
+           !cfg->button_gpio.active_low ||
+           cfg->external_button_debounce_ms==0u)) ||
+       (cfg->use_relay_output &&
+          (cfg->relay_pulse_ms==0u || !cfg->relay_output_gpio.active_high)) ||
+       (cfg->use_external_adc_pin &&
+          (!cfg->external_adc_port || cfg->external_adc_pin>=32u)))
        return false;
     b->initialized=0u;b->adc_pending=0u;b->config=*cfg;
+    b->relay_active=0u;b->relay_armed=0u;
+    b->relay_started_ms=0u;b->relay_pulse_count=0u;
+    b->external_aim_press_count=0u;b->external_relay_press_count=0u;
     b->aiming_scan_center_mdeg=cfg->aiming_scan_center_mdeg;
     SOSC_init_8MHz();
     SPLL_init_160MHz();
     NormalRUNmode_80MHz();
     if(TimerManager_Init(&cfg->timer)!=TIMER_OK)return false;
+    if(cfg->use_external_adc_pin) {
+        /* PTB0 must be routed as analog MUX0, never as digital output. */
+        PCC->PCCn[cfg->external_adc_port_pcc_index]|=PCC_PCCn_CGC_MASK;
+        cfg->external_adc_port->PCR[cfg->external_adc_pin]=PORT_PCR_MUX(0);
+    }
     if(!ADCChannel_Init(&b->adc,&cfg->adc))return false;
     if(cfg->use_gpio_led && !GpioOutput_Init(&b->led,&cfg->led_gpio))return false;
+    /* Relay output must be LOW well before any input IRQ is enabled. */
+    if(cfg->use_relay_output &&
+       !GpioOutput_Init(&b->relay,&cfg->relay_output_gpio))return false;
     if(cfg->use_gpio_button && !GpioButton_Init(&b->button,&cfg->button_gpio))return false;
     if(cfg->use_home_button &&
        !GpioButton_Init(&b->home_button,&cfg->home_button_gpio))return false;
+    if(cfg->use_relay_button &&
+       !GpioButton_Init(&b->relay_button,&cfg->relay_button_gpio))return false;
     if(StepMotor_Init(&b->step_motor,cfg->stepper_pins,cfg->stepper_delay)!=0)return false;
     StepMotor_SetMode(&b->step_motor,cfg->stepper_mode);
     stepper=cfg->stepper;stepper.motor=&b->step_motor;
     if(StepperController_Init(&b->stepper,&stepper)!=STEPPER_OK)return false;
-    /* Real homing is not automatic. Board commissioning must confirm
-     * the reference, then call StepperController_SetHome() explicitly. */
+    if(cfg->assume_stepper_center_on_boot &&
+       StepperController_SetHome(&b->stepper,0)!=STEPPER_OK)return false;
+    /* A startup zero is an OPEN-LOOP declaration: the operator must align
+     * the shaft to the scanner's physical center before applying power. */
     if(Servo_Init(&b->servo,&cfg->servo)!=SERVO_OK)return false;
     if(cfg->servo_calibration_count!=0u &&
        Servo_SetCalibration(&b->servo,cfg->servo_calibration,
@@ -121,16 +147,55 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
 }
 void BoardSystem_Update(BoardSystem *b){
     uint32_t now;
+    bool moving=true;
     if(!b||!b->initialized)return;
     now=TimerManager_GetTickMs();
-    /* SW3 only declares zero after the user physically aligned the barrel
-     * with the center direction. A switch press is NOT a homing measurement. */
+
+    /* Pulse must end even if the relay button remains held LOW. */
+    if(b->relay_active && (uint32_t)(now-b->relay_started_ms)>=
+                           b->config.relay_pulse_ms) {
+        GpioOutput_Write(&b->relay,false);
+        b->relay_active=0u;
+    }
+
+    /* The ISR sets flags only. All debouncing, App/Step control, and GPIO
+     * relay writes run here in foreground. No motor logic runs in the ISR. */
     if(b->config.use_home_button && GpioButton_TakePress(&b->home_button) &&
        !StepperController_IsHomed(&b->stepper))
         (void)BoardSystem_ConfirmStepperCenter(b);
-    if(b->config.use_gpio_button && GpioButton_TakePress(&b->button))
-        App_RequestFire(&b->app,now);
+    if(b->config.use_gpio_button &&
+       GpioButton_TakePressDebounced(&b->button,now,
+                                    b->config.external_button_debounce_ms)) {
+        ++b->external_aim_press_count;
+        if(!b->relay_active) {
+            b->relay_armed=0u;
+            App_RequestFire(&b->app,now);
+        }
+    }
+
     App_Update(&b->app,now);
+    if(b->app.fire_state==APP_FIRE_INDICATING)
+        b->relay_armed=1u;
+    else if(b->app.fire_state==APP_FIRE_TIMED_OUT)
+        b->relay_armed=0u;
+
+    if(b->config.use_relay_button &&
+       GpioButton_TakePressDebounced(&b->relay_button,now,
+                                    b->config.external_button_debounce_ms)) {
+        ++b->external_relay_press_count;
+        /* Independent relay button: one bounded pulse only after a completed
+         * Stepper software aim, never while moving or before software home. */
+        if(b->relay_armed && !b->relay_active &&
+           StepperController_IsHomed(&b->stepper) &&
+           StepperController_GetPosition(&b->stepper,NULL,NULL,
+                                         &moving)==STEPPER_OK && !moving) {
+            GpioOutput_Write(&b->relay,true);
+            b->relay_active=1u;
+            b->relay_armed=0u;
+            b->relay_started_ms=now;
+            ++b->relay_pulse_count;
+        }
+    }
     /* App may queue the latest status text. Emit at most one GPIO edge
      * step, returning immediately to the scan/tracker main loop. */
     if(b->config.lcd_service)
@@ -147,6 +212,7 @@ void BoardSystem_OnFireButtonPortIrq(BoardSystem *b){
     if(!b||!b->initialized)return;
     if(b->config.use_gpio_button)GpioButton_OnPortIrq(&b->button);
     if(b->config.use_home_button)GpioButton_OnPortIrq(&b->home_button);
+    if(b->config.use_relay_button)GpioButton_OnPortIrq(&b->relay_button);
 }
 
 bool BoardSystem_ConfirmStepperCenter(BoardSystem *b)
