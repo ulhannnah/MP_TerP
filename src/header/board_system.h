@@ -51,6 +51,7 @@ typedef struct {
     uint8_t use_relay_output;
     GpioOutputConfig relay_output_gpio;
     uint32_t relay_pulse_ms; /* defaults configured by board profile */
+    TimerChannel relay_timer_channel; /* LPIT one-shot; distinct from tick, motor, Echo */
     uint32_t external_button_debounce_ms;
     /* Manually align Stepper with center before power-on; software declares
      * zero without moving or measuring the physical shaft. */
@@ -73,7 +74,7 @@ typedef struct {
     BoardSystemConfig config;
     uint8_t adc_pending;
     int32_t aiming_scan_center_mdeg;
-    uint8_t relay_active;
+    volatile uint8_t relay_active; /* cleared by LPIT callback, read in foreground */
     uint8_t relay_armed;
     uint8_t previous_fire_state;
     uint32_t relay_started_ms;
