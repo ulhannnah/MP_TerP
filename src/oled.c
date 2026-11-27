@@ -5,8 +5,23 @@
 
 #define OLED_BUFFER_BYTES ((OLED_WIDTH * OLED_HEIGHT) / 8)
 #define OLED_TX_CHUNK     128u
+#define OLED_PAGE_COUNT   8u
+#define OLED_ASYNC_TIMEOUT_MS  200u
+#define OLED_ASYNC_RETRY_MS    250u
 
 static uint8_t oled_framebuffer[OLED_BUFFER_BYTES];
+
+/* Only the foreground accesses these state variables. 128-byte snapshots
+ * cannot be overwritten until the port reports that STOP has completed. */
+static uint8_t s_displayed[OLED_BUFFER_BYTES];
+static uint8_t s_page_data[OLED_TX_CHUNK];
+static uint8_t s_page_commands[6];
+static uint8_t s_page_valid[OLED_PAGE_COUNT];
+static uint8_t s_refresh_requested, s_rescan_requested;
+static uint8_t s_scan_page, s_active_page, s_async_phase, s_initialized;
+static uint32_t s_phase_started_ms, s_retry_after_ms;
+static OLEDTransferStats s_stats;
+
 
 static int OLED_Command(uint8_t value)
 {
@@ -40,6 +55,14 @@ int OLED_Init(void)
     unsigned i;
     int r;
 
+    /* Synchronous boot setup is intentionally preserved. All subsequent
+     * Stage5 refreshes use the non-blocking path, not OLED_Update(). */
+    s_initialized=0u;
+    s_refresh_requested=0u;s_rescan_requested=0u;
+    s_scan_page=0u;s_active_page=0u;s_async_phase=0u;
+    s_retry_after_ms=0u;
+    memset(&s_stats,0,sizeof(s_stats));
+    memset(s_page_valid,0,sizeof(s_page_valid));
     OLED_PortInit();
     for (i = 0u; i < sizeof(commands); ++i)
     {
@@ -47,7 +70,9 @@ int OLED_Init(void)
         if (r != 0) return r;
     }
     OLED_Clear();
-    return OLED_Update();
+    r=OLED_Update();
+    if(r==0)s_initialized=1u;
+    return r;
 }
 
 void OLED_Clear(void)
@@ -188,6 +213,7 @@ void OLED_DrawString(int16_t x, int16_t y, const char *str,
 int OLED_Update(void)
 {
     uint16_t offset;
+    if(s_async_phase!=0u)return -6; /* unsafe to mix sync/async on bus */
     int r;
     r = OLED_Command(0x21u); if (r) return r;
     r = OLED_Command(0u);    if (r) return r;
@@ -205,7 +231,110 @@ int OLED_Update(void)
                            &oled_framebuffer[offset], OLED_TX_CHUNK);
         if (r != 0) return r;
     }
+    memcpy(s_displayed,oled_framebuffer,sizeof(s_displayed));
+    for(uint8_t page=0u;page<OLED_PAGE_COUNT;page++)s_page_valid[page]=1u;
     return 0;
+}
+
+int OLED_RequestUpdate(void)
+{
+    if(!s_initialized)return -1;
+    ++s_stats.update_requests;
+    if(s_refresh_requested || s_async_phase!=0u)
+        s_rescan_requested=1u;
+    else {
+        s_refresh_requested=1u;
+        s_scan_page=0u;
+    }
+    return 0;
+}
+
+/* A single call does one bounded piece of work: either start a transaction,
+ * feed one LPI2C TX FIFO command, or inspect at most eight page digests.
+ * This prevents SSD1306 transport from delaying the foreground scanner. */
+void OLED_Service(uint32_t now_ms)
+{
+    int result;
+    if(!s_initialized)return;
+    if((int32_t)(now_ms-s_retry_after_ms)<0)return;
+    if(s_async_phase!=0u){
+        OLED_PortAsyncService();
+        result=OLED_PortAsyncStatus();
+        if(result==1){
+            if((uint32_t)(now_ms-s_phase_started_ms)>
+               OLED_ASYNC_TIMEOUT_MS) {
+                OLED_PortAsyncAbort();
+                ++s_stats.errors;
+                s_async_phase=0u;
+                s_retry_after_ms=now_ms+OLED_ASYNC_RETRY_MS;
+            }
+            return;
+        }
+        if(result<0){
+            ++s_stats.errors;
+            s_async_phase=0u;
+            s_retry_after_ms=now_ms+OLED_ASYNC_RETRY_MS;
+            return;
+        }
+        if(s_async_phase==1u){
+            if(!OLED_PortAsyncStart(OLED_I2C_ADDR,0x40u,
+                                    s_page_data,OLED_TX_CHUNK)){
+                ++s_stats.errors;
+                s_async_phase=0u;
+                s_retry_after_ms=now_ms+OLED_ASYNC_RETRY_MS;
+                return;
+            }
+            s_phase_started_ms=now_ms;
+            s_async_phase=2u;
+        } else {
+            memcpy(&s_displayed[(uint16_t)s_active_page*OLED_TX_CHUNK],
+                   s_page_data,OLED_TX_CHUNK);
+            s_page_valid[s_active_page]=1u;
+            ++s_stats.pages_sent;
+            s_stats.data_bytes_sent+=OLED_TX_CHUNK;
+            s_scan_page=(uint8_t)(s_active_page+1u);
+            s_async_phase=0u;
+        }
+        return;
+    }
+    if(!s_refresh_requested)return;
+    while(s_scan_page<OLED_PAGE_COUNT){
+        const uint16_t offset=(uint16_t)s_scan_page*OLED_TX_CHUNK;
+        if(!s_page_valid[s_scan_page] ||
+           memcmp(&s_displayed[offset],&oled_framebuffer[offset],
+                  OLED_TX_CHUNK)!=0)break;
+        ++s_stats.pages_skipped;
+        ++s_scan_page;
+    }
+    if(s_scan_page==OLED_PAGE_COUNT){
+        s_refresh_requested=s_rescan_requested;
+        s_rescan_requested=0u;
+        s_scan_page=0u;
+        return;
+    }
+    s_active_page=s_scan_page;
+    memcpy(s_page_data,
+           &oled_framebuffer[(uint16_t)s_active_page*OLED_TX_CHUNK],
+           OLED_TX_CHUNK);
+    /* A single command transaction constrains both column and page.
+     * Data transaction then writes exactly one page (128 bytes). */
+    s_page_commands[0]=0x21u; s_page_commands[1]=0u;
+    s_page_commands[2]=127u;  s_page_commands[3]=0x22u;
+    s_page_commands[4]=s_active_page;
+    s_page_commands[5]=s_active_page;
+    if(!OLED_PortAsyncStart(OLED_I2C_ADDR,0x00u,s_page_commands,6u)){
+        ++s_stats.errors;
+        s_retry_after_ms=now_ms+OLED_ASYNC_RETRY_MS;
+        return;
+    }
+    s_phase_started_ms=now_ms;
+    s_async_phase=1u;
+}
+void OLED_GetTransferStats(OLEDTransferStats *out)
+{
+    if(!out)return;
+    *out=s_stats;
+    out->busy=(uint8_t)(s_async_phase!=0u || s_refresh_requested!=0u);
 }
 
 int OLED_SetContrast(uint8_t contrast)
