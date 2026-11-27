@@ -26,6 +26,7 @@ static void init(void)
     cfg.set_hold=8u;cfg.data_valid=4u;
     assert(OLED_PortConfigure(&cfg));
     OLED_PortInit();
+    assert(OLED_PortTransportMode()==1u);
     assert((PCC->PCCn[PCC_DMAMUX_INDEX]&PCC_PCCn_CGC_MASK)!=0u);
     assert((LPI2C0->MCR&LPI2C_MCR_MEN_MASK)!=0u);
 }
@@ -95,10 +96,12 @@ static void test_edma_minor_loop_mode_is_rejected(void)
 {
     DMA->CR=DMA_CR_EMLM_MASK;
     OLED_PortInit();
+    assert(OLED_PortTransportMode()==0u);
     const uint8_t data=1u;
     assert(!OLED_PortAsyncStart(0x3cu,0x40u,&data,1u));
     DMA->CR=0u;
     OLED_PortInit();
+    assert(OLED_PortTransportMode()==1u);
     assert(OLED_PortAsyncStart(0x3cu,0x40u,&data,1u));
     OLED_PortAsyncAbort();
 }
