@@ -41,8 +41,25 @@ void OLED_DrawChar(int16_t x, int16_t y, char c,
 void OLED_DrawString(int16_t x, int16_t y, const char *str,
                      uint8_t size, uint8_t color);
 
-/* Hardware transfer: 1024 framebuffer bytes; returns 0 on success. */
+/* Legacy synchronous transfer used during initialization and diagnostics. */
 int OLED_Update(void);
+
+/* Runtime display path: render in RAM, request a diff pass, then service
+ * the LPI2C transfer from main. Dirty 128-byte SSD1306 pages are copied
+ * into a stable snapshot; unchanged pages are skipped entirely.
+ * No DMA is enabled by this implementation. Each foreground Service call
+ * performs bounded work without polling until hardware is ready. */
+int OLED_RequestUpdate(void);
+void OLED_Service(uint32_t now_ms);
+typedef struct {
+    uint32_t update_requests;
+    uint32_t pages_sent;
+    uint32_t pages_skipped;
+    uint32_t data_bytes_sent;
+    uint32_t errors;
+    uint8_t busy;
+} OLEDTransferStats;
+void OLED_GetTransferStats(OLEDTransferStats *out);
 int OLED_SetContrast(uint8_t contrast);
 int OLED_SetInverted(uint8_t enabled);
 
