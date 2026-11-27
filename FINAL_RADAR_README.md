@@ -1,3 +1,5 @@
+> **실시간 최적화 작업 브랜치:** 이 브랜치(`opt/nonblocking-edma-20261127`)는 원본 `final/radar-system-20261126`에서 분기한 비차단 OLED/Relay/Task 최적화 실험이다. [변경사항·테스트·주의사항](docs/20261127_비차단_실시간_최적화_브랜치.md). **현재 eDMA 하드웨어 전송은 아직 연결하지 않았으며**, 호스트 테스트 PASS가 실제 S32K144 보드 검증을 대신하지 않는다.
+
 # MP_TerP — 최종 레이더 시스템 개발 브랜치
 
 > **SWD/JTAG 핀 충돌 수정 (2026-11-26):** 이전에 안내했던 PTC4(J3-12)는 **SWD_CLK**, PTC5(J3-10)는 **JTAG_TDI**와 겹쳐 OpenSDA 디버깅을 막을 수 있다. **이 두 핀에 외부 버튼을 연결하지 말 것.** 최신 최종 브랜치는 외부 AIM=**PTC8(J6-09)**, RELAY 버튼=**PTC9(J6-11)**로 수정했고 소스에 디버그 핀 사용 거부 검사를 추가했다. 외부 릴레이 신호 PTE0와 외부 ADC PTB0는 그대로다. [NXP 기술지원: 디버그 핀을 GPIO로 변경하면 연결 실패 가능](https://community.nxp.com/t5/S32K/S32K144-Debugging-pins-are-disabled-How-to-recover-the-board/m-p/1885448).
