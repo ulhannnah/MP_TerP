@@ -109,7 +109,7 @@ static void report(const char *name,uint32_t frames,
     const double reduction=100.0*(1.0-(double)wire_delta/(double)old_wire);
     /* I2C 100kbps, nominal 9 clocks per byte including ACK. Wire overhead
      * is modeled; inter-transaction idle and analog effects are not. */
-    printf("%-17s %4u %9llu %9llu %8u %7u %8.2f%% %8.2fms %8.2fms\\n",
+    printf("%-17s %4u %9llu %9llu %8u %7u %8.2f%% %8.2fms %8.2fms\n",
            name,frames,
            (unsigned long long)old_wire,
            (unsigned long long)wire_delta,
@@ -203,7 +203,7 @@ int main(void)
     full_inversion();
     assert(tx_count==cmd_count+data_count);
     assert(cmd_count==data_count);
-    printf("PASS: production OLED driver + SSD1306 mock GDDRAM byte exact, %llu transactions\\n",
+    printf("PASS: production OLED driver + SSD1306 mock GDDRAM byte exact, %llu transactions\n",
            (unsigned long long)tx_count);
     return 0;
 }
