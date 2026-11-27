@@ -19,9 +19,11 @@ static uint32_t n_transactions;
 static uint32_t n_data;
 static uint32_t n_commands;
 static uint8_t last_data[128];
+static uint16_t last_data_length;
 static uint8_t last_command[6];
 static uint32_t data_history_count;
 static uint8_t data_history[8][128];
+static uint16_t data_length_history[8];
 static uint8_t fail_once;
 
 void OLED_PortInit(void){tx.status=0;}
@@ -52,9 +54,13 @@ void OLED_PortAsyncService(void)
     }else{
         assert(tx.control==0x40u && tx.length==128u);
         ++n_data;
-        memcpy(last_data,tx.source,128u);
+        last_data_length=tx.length;
+        memset(last_data,0,sizeof(last_data));
+        memcpy(last_data,tx.source,tx.length);
         if(data_history_count<8u){
-            memcpy(data_history[data_history_count],tx.source,128u);
+            memset(data_history[data_history_count],0,128u);
+            memcpy(data_history[data_history_count],tx.source,tx.length);
+            data_length_history[data_history_count]=tx.length;
             ++data_history_count;
         }
     }
@@ -90,11 +96,12 @@ static void single_dirty_page(void)
     assert(OLED_RequestUpdate()==0);
     drain(100u);
     OLED_GetTransferStats(&s);
-    assert(s.pages_sent==1u && s.data_bytes_sent==128u);
+    assert(s.pages_sent==1u && s.data_bytes_sent==1u);
     assert(n_commands==1u && n_data==1u);
     assert(last_command[0]==0x21u && last_command[1]==0u &&
-           last_command[2]==127u && last_command[3]==0x22u &&
+           last_command[2]==0u && last_command[3]==0x22u &&
            last_command[4]==1u && last_command[5]==1u);
+    assert(last_data_length==1u);
     assert(last_data[0]==(1u<<2));
     assert(OLED_RequestUpdate()==0);
     drain(200u);
@@ -116,10 +123,31 @@ static void snapshot_prevents_inflight_corruption(void)
     drain(304u);
     OLED_GetTransferStats(&s);
     assert(data_history_count==2u);
-    assert((data_history[0][1] & 0x04u)!=0u);
-    assert((data_history[0][2] & 0x04u)==0u);
-    assert((data_history[1][2] & 0x04u)!=0u);
+    assert(data_length_history[0]==1u && data_history[0][0]==0x04u);
+    assert(data_length_history[1]==1u && data_history[1][0]==0x04u);
+    assert(last_command[1]==2u && last_command[2]==2u);
     assert(s.pages_sent==3u); /* previous page1 + page2 twice */
+}
+/* Two separated changed columns use one bounded contiguous window.
+ * No unchanged page is retransmitted; unchanged columns inside the window
+ * are included because the SSD1306 command supports a contiguous span. */
+static void dirty_column_window(void)
+{
+    OLEDTransferStats before,after;
+    OLED_GetTransferStats(&before);
+    OLED_DrawPixel(10,33,OLED_WHITE); /* page 4, column 10 */
+    OLED_DrawPixel(20,33,OLED_WHITE); /* page 4, column 20 */
+    assert(OLED_RequestUpdate()==0);
+    drain(450u);
+    OLED_GetTransferStats(&after);
+    assert(after.pages_sent==before.pages_sent+1u);
+    assert(after.data_bytes_sent==before.data_bytes_sent+11u);
+    assert(last_command[0]==0x21u && last_command[1]==10u &&
+           last_command[2]==20u && last_command[3]==0x22u &&
+           last_command[4]==4u && last_command[5]==4u);
+    assert(last_data_length==11u);
+    assert(last_data[0]==0x02u && last_data[10]==0x02u);
+    for(uint8_t i=1u;i<10u;i++)assert(last_data[i]==0u);
 }
 static void transient_failure_does_not_commit_shadow(void)
 {
@@ -133,14 +161,15 @@ static void transient_failure_does_not_commit_shadow(void)
     /* The failed page is not marked as displayed; retry after backoff. */
     drain(900u);
     OLED_GetTransferStats(&s);
-    assert(s.pages_sent>=4u);
+    assert(s.pages_sent>=5u);
 }
 int main(void)
 {
     unchanged_page_is_skipped();
     single_dirty_page();
     snapshot_prevents_inflight_corruption();
+    dirty_column_window();
     transient_failure_does_not_commit_shadow();
-    puts("PASS: SSD1306 async dirty pages, immutable snapshot, retry, unchanged-page skip");
+    puts("PASS: SSD1306 async dirty page/columns, immutable snapshot, retry, unchanged skip");
     return 0;
 }
