@@ -77,6 +77,8 @@ volatile uint32_t g_stage_oled_pages_skipped;
 volatile uint32_t g_stage_oled_data_bytes;
 volatile uint32_t g_stage_oled_errors;
 volatile uint32_t g_stage_oled_busy;
+volatile uint32_t g_stage_update_cycles_last;
+volatile uint32_t g_stage_update_cycles_max;
 
 static void stage_fault(uint32_t error)
 {
@@ -85,6 +87,18 @@ static void stage_fault(uint32_t error)
 }
 
 #if MP_TERP_STAGE == 5
+/* Cortex-M4 DWT runtime timing (CPU cycles, including interrupt preemption).
+ * Keep this self-contained so a manually maintained S32DS file list does
+ * not need an additional dependency to enable the profiling counters. */
+#define STAGE_DEMCR     (*(volatile uint32_t *)(uintptr_t)0xE000EDFCu)
+#define STAGE_DWT_CTRL  (*(volatile uint32_t *)(uintptr_t)0xE0001000u)
+#define STAGE_DWT_CYC   (*(volatile uint32_t *)(uintptr_t)0xE0001004u)
+static void stage_profile_enable(void)
+{
+    STAGE_DEMCR |= (1u<<24);
+    STAGE_DWT_CYC=0u;
+    STAGE_DWT_CTRL |= 1u;
+}
 /* The independent ALL_TEST boot code already proved this WDOG unlock
  * sequence on the target bench. Stage 5 must do the same BEFORE clock
  * configuration or the MCU may reset during LCD initialization.
@@ -295,6 +309,8 @@ int main(void)
     g_stage_oled_data_bytes=0u;
     g_stage_oled_errors=0u;
     g_stage_oled_busy=0u;
+    g_stage_update_cycles_last=0u;
+    g_stage_update_cycles_max=0u;
 
 #if MP_TERP_STAGE == 4
     /* Synthetic bench: does not configure clocks or touch peripheral registers. */
@@ -337,6 +353,7 @@ int main(void)
 #endif
         if(!BoardSystem_Init(&s_board,&s_cfg))stage_fault(52u);
         else {
+            stage_profile_enable();
             MP_NvicClearPending(FTM0_Ch6_Ch7_IRQn);
             MP_NvicEnable(FTM0_Ch6_Ch7_IRQn);
             MP_NvicClearPending(PORTC_IRQn);
@@ -397,7 +414,12 @@ int main(void)
                 g_stage_stepper_center_homed=1u;
             else g_stage_error=54u;
         }
+        uint32_t update_start=STAGE_DWT_CYC;
         BoardSystem_Update(&s_board);
+        uint32_t update_cycles=STAGE_DWT_CYC-update_start;
+        g_stage_update_cycles_last=update_cycles;
+        if(update_cycles>g_stage_update_cycles_max)
+            g_stage_update_cycles_max=update_cycles;
         /* Snapshot the non-blocking OLED transfer counters for S32DS. */
         OLEDTransferStats oled_stats;
         OLED_GetTransferStats(&oled_stats);
