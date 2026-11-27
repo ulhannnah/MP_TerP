@@ -1,6 +1,7 @@
 #include "oled_port.h"
 #include "oled_port_s32k144.h"
 #include "device_registers.h"
+#include <stddef.h>
 
 #define PORT_I2C_ERRORS (LPI2C_MSR_NDF_MASK | LPI2C_MSR_ALF_MASK | \
                          LPI2C_MSR_FEF_MASK | LPI2C_MSR_PLTF_MASK)
@@ -165,8 +166,10 @@ void OLED_PortAsyncService(void)
 int OLED_PortAsyncStatus(void){return s_async.status;}
 void OLED_PortAsyncAbort(void)
 {
-    if(!s_async.active)return;
-    /* Only on timeout. Reset and restore LPI2C port configuration. */
+    /* Reinitialize on either a bus fault OR a timeout. A failed async write
+     * may have commands stranded in the TX FIFO, so retrying without reset
+     * is not safe. This executes at most once per bounded retry interval. */
+    if(!s_bus)return;
     OLED_PortInit();
     s_async.active=0u;
     s_async.status=-3;
