@@ -501,6 +501,12 @@ int main(void)
         g_stage_tick_ms=TimerManager_GetTickMs();
 #endif
         g_stage_state=2u;
+#if MP_TERP_STAGE == 5 && MP_TERP_IDLE_WFI_ENABLE
+        /* Experimental low-power mode: LPIT tick or peripheral IRQ wakes
+         * Cortex-M4F. Only safe when LPI2C TX is independent eDMA, not the
+         * CPU one-word-per-loop FIFO service. Enable after board tests. */
+        __asm volatile ("wfi");
+#endif
     }
 }
 #endif /* MP_TERP_STAGE_MAIN */
