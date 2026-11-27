@@ -265,6 +265,14 @@ void OLED_PortAsyncService(void)
 #endif
 }
 int OLED_PortAsyncStatus(void){return s_async.status;}
+uint8_t OLED_PortTransportMode(void)
+{
+#if MP_TERP_OLED_EDMA_ENABLE
+    return s_edma_ready;
+#else
+    return 0u;
+#endif
+}
 void OLED_PortAsyncAbort(void)
 {
     /* Reinitialize on either a bus fault OR a timeout. A failed async write
