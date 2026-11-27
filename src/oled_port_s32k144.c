@@ -22,6 +22,76 @@ static OLEDPortConfig s_config;
 static uint8_t s_has_config;
 static LPI2C_Type *s_bus;
 
+#if MP_TERP_OLED_EDMA_ENABLE
+/* Experimental S32K144 LPI2C0 TX eDMA path, channel 0 exclusively.
+ * TCD: 32-bit SRAM command/data word => 32-bit MTDR, one word per
+ * LPI2C TX request. DMA DONE means FIFO supplied, not STOP observed.
+ * The foreground must still verify LPI2C SDF before committing a page. */
+#define OLED_EDMA_CH     0u
+#define OLED_EDMA_SOURCE 45u
+#define OLED_EDMA_WORDS  (128u + 3u) /* START + control + data + STOP */
+static uint32_t s_dma_words[OLED_EDMA_WORDS];
+static uint8_t s_edma_ready;
+static uint8_t s_edma_active;
+static void oled_edma_disable(void)
+{
+    DMAMUX->CHCFG[OLED_EDMA_CH]=0u;
+    DMA->CERQ=DMA_CERQ_CERQ(OLED_EDMA_CH);
+    if(s_bus)s_bus->MDER &= ~LPI2C_MDER_TDDE_MASK;
+    s_edma_active=0u;
+}
+static bool oled_edma_init(void)
+{
+    /* Do not interfere with unrelated DMA clients / minor loop mode. */
+    if(s_bus!=LPI2C0 || (DMA->CR&DMA_CR_EMLM_MASK)!=0u)
+        return false;
+    PCC->PCCn[PCC_DMAMUX_INDEX] |= PCC_PCCn_CGC_MASK;
+    oled_edma_disable();
+    DMA->CERR=DMA_CERR_CERR(OLED_EDMA_CH);
+    return true;
+}
+static bool oled_edma_start(uint8_t address7,uint8_t control,
+                            const uint8_t *data,uint16_t len)
+{
+    const uint16_t count=(uint16_t)(len+3u);
+    if(!s_edma_ready || s_edma_active || count>OLED_EDMA_WORDS)
+        return false;
+    s_dma_words[0]=LPI2C_MTDR_CMD(4)|
+                   LPI2C_MTDR_DATA((uint32_t)address7<<1);
+    s_dma_words[1]=LPI2C_MTDR_CMD(0)|LPI2C_MTDR_DATA(control);
+    for(uint16_t i=0u;i<len;i++)
+        s_dma_words[(uint16_t)(i+2u)]=LPI2C_MTDR_CMD(0)|
+                                     LPI2C_MTDR_DATA(data[i]);
+    s_dma_words[(uint16_t)(len+2u)]=LPI2C_MTDR_CMD(2);
+    oled_edma_disable();
+    DMA->CERR=DMA_CERR_CERR(OLED_EDMA_CH);
+    /* Program the TCD while hardware requests are disabled. */
+    DMA->TCD[OLED_EDMA_CH].CSR=0u;
+    DMA->TCD[OLED_EDMA_CH].SADDR=(uint32_t)(uintptr_t)&s_dma_words[0];
+    DMA->TCD[OLED_EDMA_CH].SOFF=DMA_TCD_SOFF_SOFF(4);
+    DMA->TCD[OLED_EDMA_CH].ATTR=DMA_TCD_ATTR_SSIZE(2)|
+                                 DMA_TCD_ATTR_DSIZE(2);
+    DMA->TCD[OLED_EDMA_CH].NBYTES.MLNO=DMA_TCD_NBYTES_MLNO_NBYTES(4);
+    DMA->TCD[OLED_EDMA_CH].SLAST=0u;
+    DMA->TCD[OLED_EDMA_CH].DADDR=(uint32_t)(uintptr_t)&s_bus->MTDR;
+    DMA->TCD[OLED_EDMA_CH].DOFF=0u;
+    DMA->TCD[OLED_EDMA_CH].CITER.ELINKNO=
+        DMA_TCD_CITER_ELINKNO_CITER(count);
+    DMA->TCD[OLED_EDMA_CH].DLASTSGA=0u;
+    DMA->TCD[OLED_EDMA_CH].BITER.ELINKNO=
+        DMA_TCD_BITER_ELINKNO_BITER(count);
+    /* DREQ drops channel request when the major loop completes.
+     * No DMA interrupt: the existing bounded service polls DONE+SDF. */
+    DMA->TCD[OLED_EDMA_CH].CSR=DMA_TCD_CSR_DREQ_MASK;
+    DMAMUX->CHCFG[OLED_EDMA_CH]=
+        DMAMUX_CHCFG_SOURCE(OLED_EDMA_SOURCE)|DMAMUX_CHCFG_ENBL_MASK;
+    s_edma_active=1u;
+    s_bus->MDER |= LPI2C_MDER_TDDE_MASK;
+    DMA->SERQ=DMA_SERQ_SERQ(OLED_EDMA_CH);
+    return true;
+}
+#endif
+
 bool OLED_PortConfigure(const OLEDPortConfig *cfg){
     if(!cfg||!cfg->bus||!cfg->sda_port||!cfg->scl_port||
        cfg->sda_pin>=32u||cfg->scl_pin>=32u||
@@ -47,6 +117,10 @@ void OLED_PortInit(void){
     s_bus=cfg.bus;
     s_async.active=0u;
     s_async.status=0;
+#if MP_TERP_OLED_EDMA_ENABLE
+    s_edma_ready=0u;
+    s_edma_active=0u;
+#endif
     PCC->PCCn[cfg.sda_port_pcc_index] |= PCC_PCCn_CGC_MASK;
     PCC->PCCn[cfg.scl_port_pcc_index] |= PCC_PCCn_CGC_MASK;
     cfg.sda_port->PCR[cfg.sda_pin]=PORT_PCR_MUX(cfg.sda_alt);
@@ -63,6 +137,9 @@ void OLED_PortInit(void){
                   LPI2C_MCCR0_DATAVD(cfg.data_valid);
     s_bus->MFCR=LPI2C_MFCR_TXWATER(0);
     s_bus->MCR=LPI2C_MCR_MEN_MASK;
+#if MP_TERP_OLED_EDMA_ENABLE
+    s_edma_ready=(uint8_t)(oled_edma_init()?1u:0u);
+#endif
 }
 static int port_put(uint16_t value){
     if(!s_bus)return -5;
@@ -116,6 +193,11 @@ bool OLED_PortAsyncStart(uint8_t address7, uint8_t control,
     s_async.control=control;
     s_async.phase=0u;
     s_bus->MSR=LPI2C_MSR_SDF_MASK|PORT_I2C_ERRORS;
+#if MP_TERP_OLED_EDMA_ENABLE
+    /* In eDMA mode never fall back halfway through a DMA transaction.
+     * A failed start is retried through the upper-layer 250ms recovery. */
+    if(!oled_edma_start(address7,control,data,len))return false;
+#endif
     s_async.status=1;
     s_async.active=1u;
     return true;
@@ -127,8 +209,26 @@ void OLED_PortAsyncService(void)
     if(!s_async.active || !s_bus)return;
     msr=s_bus->MSR;
     if((msr&PORT_I2C_ERRORS)!=0u){
+#if MP_TERP_OLED_EDMA_ENABLE
+        if(s_edma_active)oled_edma_disable();
+#endif
         s_async.active=0u;s_async.status=-2;return;
     }
+#if MP_TERP_OLED_EDMA_ENABLE
+    if((DMA->ERR&(1u<<OLED_EDMA_CH))!=0u){
+        oled_edma_disable();
+        s_async.active=0u;s_async.status=-5;return;
+    }
+    /* A transfer is only complete after both TCD major loop completion
+     * AND the STOP flag. DONE alone means data may still be in the FIFO. */
+    if((DMA->TCD[OLED_EDMA_CH].CSR&DMA_TCD_CSR_DONE_MASK)!=0u &&
+       (msr&LPI2C_MSR_SDF_MASK)!=0u){
+        oled_edma_disable();
+        s_bus->MSR=LPI2C_MSR_SDF_MASK;
+        s_async.active=0u;s_async.status=0;
+    }
+    return;
+#else
     if(s_async.phase==4u){
         if((msr&LPI2C_MSR_SDF_MASK)!=0u){
             s_bus->MSR=LPI2C_MSR_SDF_MASK;
@@ -162,6 +262,7 @@ void OLED_PortAsyncService(void)
         s_async.active=0u;s_async.status=-4;
         break;
     }
+#endif
 }
 int OLED_PortAsyncStatus(void){return s_async.status;}
 void OLED_PortAsyncAbort(void)
@@ -170,6 +271,9 @@ void OLED_PortAsyncAbort(void)
      * may have commands stranded in the TX FIFO, so retrying without reset
      * is not safe. This executes at most once per bounded retry interval. */
     if(!s_bus)return;
+#if MP_TERP_OLED_EDMA_ENABLE
+    if(s_edma_active)oled_edma_disable();
+#endif
     OLED_PortInit();
     s_async.active=0u;
     s_async.status=-3;
