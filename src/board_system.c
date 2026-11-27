@@ -54,6 +54,17 @@ static bool aim_position(void *ctx,int32_t *angle,bool *moving){
     return MP_TERP_StepperToAim(relative,b->aiming_scan_center_mdeg,angle);
 }
 static bool oled_flush(void *ctx){(void)ctx;return OLED_RequestUpdate()==0;}
+
+/* LPIT CH3 one-shot: force the relay output LOW at the deadline, independent
+ * of foreground OLED and radar work. No delays or application calls in ISR. */
+static void relay_pulse_expired_irq(void *context)
+{
+    BoardSystem *b=(BoardSystem *)context;
+    if(!b || !b->initialized || !b->relay_active)return;
+    GpioOutput_Write(&b->relay,false);
+    b->relay_active=0u;
+}
+
 static bool lcd_write(void *ctx,uint8_t row,const char *line){
     BoardSystem *b=(BoardSystem *)ctx;
     return b->config.lcd_write?b->config.lcd_write(b->config.user,row,line):false;
@@ -86,7 +97,12 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
            !cfg->button_gpio.active_low ||
            cfg->external_button_debounce_ms==0u)) ||
        (cfg->use_relay_output &&
-          (cfg->relay_pulse_ms==0u || !cfg->relay_output_gpio.active_high)) ||
+          (cfg->relay_pulse_ms==0u || !cfg->relay_output_gpio.active_high ||
+           cfg->relay_pulse_ms > UINT32_MAX/1000u ||
+           (unsigned)cfg->relay_timer_channel > 3u ||
+           cfg->relay_timer_channel==cfg->timer.tick_channel ||
+           cfg->relay_timer_channel==cfg->stepper.timer_channel ||
+           cfg->relay_timer_channel==cfg->ultrasonic.trigger_timer_channel)) ||
        (cfg->use_external_adc_pin &&
           (!cfg->external_adc_port || cfg->external_adc_pin>=32u)) ||
        /* SWD_CLK=PTC4 and JTAG_TDI=PTC5. NEVER remux either as GPIO,
@@ -108,6 +124,12 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
     SPLL_init_160MHz();
     NormalRUNmode_80MHz();
     if(TimerManager_Init(&cfg->timer)!=TIMER_OK)return false;
+    if(cfg->use_relay_output &&
+       (TimerManager_Configure(cfg->relay_timer_channel,
+                              cfg->relay_pulse_ms*1000u,true)!=TIMER_OK ||
+        TimerManager_RegisterCallback(cfg->relay_timer_channel,
+                                      relay_pulse_expired_irq,b)!=TIMER_OK))
+        return false;
     if(cfg->use_external_adc_pin) {
         /* PTB0 must be routed as analog MUX0, never as digital output. */
         PCC->PCCn[cfg->external_adc_port_pcc_index]|=PCC_PCCn_CGC_MASK;
@@ -162,7 +184,7 @@ void BoardSystem_Update(BoardSystem *b){
     if(!b||!b->initialized)return;
     now=TimerManager_GetTickMs();
 
-    /* Pulse must end even if the relay button remains held LOW. */
+    /* Fallback expiry if the one-shot IRQ was masked or missed. */
     if(MP_RelayPulseExpired(b->relay_active!=0u,now,
                             b->relay_started_ms,b->config.relay_pulse_ms)) {
         GpioOutput_Write(&b->relay,false);
@@ -208,11 +230,15 @@ void BoardSystem_Update(BoardSystem *b){
                                          &moving)==STEPPER_OK &&
            MP_RelayCanPulse(b->relay_armed!=0u,b->relay_active!=0u,
                             StepperController_IsHomed(&b->stepper),moving)) {
-            GpioOutput_Write(&b->relay,true);
-            b->relay_active=1u;
-            b->relay_armed=0u;
-            b->relay_started_ms=now;
-            ++b->relay_pulse_count;
+            /* Arm the one-shot BEFORE making the output HIGH: even if the
+             * main loop stalls, hardware can end the pulse independently. */
+            if(TimerManager_Start(b->config.relay_timer_channel)==TIMER_OK) {
+                b->relay_active=1u;
+                GpioOutput_Write(&b->relay,true);
+                b->relay_armed=0u;
+                b->relay_started_ms=now;
+                ++b->relay_pulse_count;
+            }
         }
     }
     /* App may queue the latest status text. Emit at most one GPIO edge
