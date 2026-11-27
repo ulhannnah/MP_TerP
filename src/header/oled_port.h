@@ -22,5 +22,9 @@ bool OLED_PortAsyncStart(uint8_t address7, uint8_t control,
 void OLED_PortAsyncService(void);
 int OLED_PortAsyncStatus(void);
 void OLED_PortAsyncAbort(void);
+/* Transport selected by this build and initialized at runtime.
+ * 0 = bounded CPU LPI2C FIFO service, 1 = opt-in eDMA engine ready.
+ * eDMA mode uses the same async API (no DMA IRQ registration required). */
+uint8_t OLED_PortTransportMode(void);
 
 #endif /* OLED_PORT_H_ */
