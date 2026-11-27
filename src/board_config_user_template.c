@@ -104,6 +104,7 @@ bool MP_TERP_GetBoardConfig(BoardSystemConfig *cfg)
     cfg->relay_output_gpio=(GpioOutputConfig){PORTE,PTE,PCC_PORTE_INDEX,
                                              MP_TERP_FINAL_RELAY_PORTE_PIN,true};
     cfg->relay_pulse_ms=200u;
+    cfg->relay_timer_channel=TIMER_CH3; /* LPIT one-shot, no busy wait */
     cfg->external_button_debounce_ms=35u;
     /* Manually position the output shaft at scan center (90deg) while off.
      * After boot we DECLARE that position as the relative zero (no sensor). */
