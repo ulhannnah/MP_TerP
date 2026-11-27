@@ -115,6 +115,7 @@ bool BoardSystem_Init(BoardSystem *b,const BoardSystemConfig *cfg){
          MP_TERP_PortCDebugPinReserved(cfg->relay_button_gpio.pin)))
        return false;
     b->initialized=0u;b->adc_pending=0u;b->config=*cfg;
+    b->last_app_tick_ms=UINT32_MAX;
     b->relay_active=0u;b->relay_armed=0u;
     b->previous_fire_state=(uint8_t)APP_FIRE_IDLE;
     b->relay_started_ms=0u;b->relay_pulse_count=0u;
@@ -206,7 +207,13 @@ void BoardSystem_Update(BoardSystem *b){
         }
     }
 
-    App_Update(&b->app,now);
+    /* Cooperative 1ms application timeslice. The foreground still services
+     * buttons, relay safety and OLED FIFO on EVERY loop pass, but the radar
+     * FSM / ADC no longer spin on unchanged millisecond time. */
+    if(b->last_app_tick_ms!=now) {
+        b->last_app_tick_ms=now;
+        App_Update(&b->app,now);
+    }
     if(MP_RelayNewAimCompleted(b->previous_fire_state,
                                (uint8_t)b->app.fire_state,
                                (uint8_t)APP_FIRE_INDICATING))
