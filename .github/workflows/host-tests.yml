@@ -30,6 +30,8 @@ jobs:
         run: bash tests/run_lcd_async_tests.sh
       - name: OLED 비차단 페이지 갱신 / 전송 버퍼 테스트
         run: bash tests/run_oled_async_tests.sh
+      - name: OLED 128x64 메모리 시뮬레이션 및 버스 트래픽 비교
+        run: bash tests/run_oled_traffic_sim.sh
       - name: LPI2C 레지스터 비차단 전송 엔진 테스트
         run: bash tests/run_oled_port_async_tests.sh
       - name: S32K144 OLED 선택형 eDMA TCD/DMAMUX 호스트 테스트
