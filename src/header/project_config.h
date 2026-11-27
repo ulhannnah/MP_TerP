@@ -1,6 +1,17 @@
 #ifndef MP_TERP_PROJECT_CONFIG_H
 #define MP_TERP_PROJECT_CONFIG_H
 
+/* Optional low-power idle experiment, OFF during initial board testing.
+ * With the 1ms LPIT tick and OLED eDMA, WFI can sleep between events.
+ * Never enable WFI with CPU FIFO polling: OLED service requires fast calls. */
+#ifndef MP_TERP_IDLE_WFI_ENABLE
+#define MP_TERP_IDLE_WFI_ENABLE 0
+#endif
+#if MP_TERP_IDLE_WFI_ENABLE && \
+    (!defined(MP_TERP_OLED_EDMA_ENABLE) || MP_TERP_OLED_EDMA_ENABLE != 1)
+#error "WFI idle requires OLED eDMA mode; enable both deliberately"
+#endif
+
 /* FINAL branch defaults to integrated Stage 5.
  * No geometry confirmation -> honest uncoupled diagnostic:
  * autonomous Servo sweep, fixed-direction Echo, and external ADC manual
@@ -18,7 +29,7 @@
 
 #if defined(MP_TERP_STAGE_MAIN) && MP_TERP_STAGE == 5
 /* Preserve 2026-11-25 motor/sensor/display pins. Final Stage5 external
- * buttons (PTC4/PTC5), ADC (PTB0) and relay (PTE0) are separately defined;
+ * buttons (PTC8/PTC9), ADC (PTB0) and relay (PTE0) are separately defined;
  * never claim sensor/servo mechanical coupling without verification. */
 #ifndef MP_TERP_USE_BOARD_CONFIG_TEMPLATE
 #define MP_TERP_USE_BOARD_CONFIG_TEMPLATE
