@@ -53,7 +53,7 @@ static bool aim_position(void *ctx,int32_t *angle,bool *moving){
     /* Stepper position is relative; App compares absolute scan angles. */
     return MP_TERP_StepperToAim(relative,b->aiming_scan_center_mdeg,angle);
 }
-static bool oled_flush(void *ctx){(void)ctx;return OLED_Update()==0;}
+static bool oled_flush(void *ctx){(void)ctx;return OLED_RequestUpdate()==0;}
 static bool lcd_write(void *ctx,uint8_t row,const char *line){
     BoardSystem *b=(BoardSystem *)ctx;
     return b->config.lcd_write?b->config.lcd_write(b->config.user,row,line):false;
@@ -219,6 +219,8 @@ void BoardSystem_Update(BoardSystem *b){
      * step, returning immediately to the scan/tracker main loop. */
     if(b->config.lcd_service)
         b->config.lcd_service(b->config.user,TimerManager_GetTickMs());
+    /* Advance only one LPI2C TX command per iteration. Never busy-wait. */
+    OLED_Service(TimerManager_GetTickMs());
 }
 void BoardSystem_OnEchoCaptureIrq(BoardSystem *b){
     if(b&&b->initialized)UltrasonicPort_OnCaptureIrq(&b->ultrasonic);
