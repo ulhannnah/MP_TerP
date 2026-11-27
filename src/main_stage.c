@@ -35,6 +35,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "board_system.h"
+#include "oled_port.h"
 #include "clocks_and_modes.h"
 #include "mp_irq_compat.h"
 #include "final_io_pins.h"
@@ -77,6 +78,7 @@ volatile uint32_t g_stage_oled_pages_skipped;
 volatile uint32_t g_stage_oled_data_bytes;
 volatile uint32_t g_stage_oled_errors;
 volatile uint32_t g_stage_oled_busy;
+volatile uint32_t g_stage_oled_transport_mode; /* 0=CPU FIFO, 1=eDMA */
 volatile uint32_t g_stage_update_cycles_last;
 volatile uint32_t g_stage_update_cycles_max;
 
@@ -309,6 +311,7 @@ int main(void)
     g_stage_oled_data_bytes=0u;
     g_stage_oled_errors=0u;
     g_stage_oled_busy=0u;
+    g_stage_oled_transport_mode=0u;
     g_stage_update_cycles_last=0u;
     g_stage_update_cycles_max=0u;
 
@@ -442,6 +445,7 @@ int main(void)
             g_stage_oled_data_bytes=oled_stats.data_bytes_sent;
             g_stage_oled_errors=oled_stats.errors;
             g_stage_oled_busy=oled_stats.busy;
+            g_stage_oled_transport_mode=OLED_PortTransportMode();
             g_stage_tick_ms=snapshot_ms;
             g_stage_stepper_center_homed=
                 StepperController_IsHomed(&s_board.stepper)?1u:0u;
