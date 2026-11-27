@@ -73,6 +73,7 @@ typedef struct {
     App app;
     BoardSystemConfig config;
     uint8_t adc_pending;
+    uint32_t last_app_tick_ms; /* App FSM runs at most once per 1ms tick */
     int32_t aiming_scan_center_mdeg;
     volatile uint8_t relay_active; /* cleared by LPIT callback, read in foreground */
     uint8_t relay_armed;
