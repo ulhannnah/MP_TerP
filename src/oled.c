@@ -271,6 +271,7 @@ void OLED_Service(uint32_t now_ms)
             return;
         }
         if(result<0){
+            OLED_PortAsyncAbort(); /* clear stranded FIFO / recover bus */
             ++s_stats.errors;
             s_async_phase=0u;
             s_retry_after_ms=now_ms+OLED_ASYNC_RETRY_MS;
