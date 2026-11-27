@@ -19,6 +19,9 @@ static uint8_t s_page_commands[6];
 static uint8_t s_page_valid[OLED_PAGE_COUNT];
 static uint8_t s_refresh_requested, s_rescan_requested;
 static uint8_t s_scan_page, s_active_page, s_async_phase, s_initialized;
+/* In SSD1306 horizontal addressing, a page can be updated across a
+ * contiguous column window. Keep one immutable <=128B Tx snapshot. */
+static uint8_t s_active_column, s_active_length;
 static uint32_t s_phase_started_ms, s_retry_after_ms;
 static OLEDTransferStats s_stats;
 
@@ -60,6 +63,7 @@ int OLED_Init(void)
     s_initialized=0u;
     s_refresh_requested=0u;s_rescan_requested=0u;
     s_scan_page=0u;s_active_page=0u;s_async_phase=0u;
+    s_active_column=0u;s_active_length=0u;
     s_retry_after_ms=0u;
     memset(&s_stats,0,sizeof(s_stats));
     memset(s_page_valid,0,sizeof(s_page_valid));
@@ -250,7 +254,7 @@ int OLED_RequestUpdate(void)
 }
 
 /* A single call does one bounded piece of work: either start a transaction,
- * feed one LPI2C TX FIFO command, or inspect at most eight page digests.
+ * feed one LPI2C TX FIFO command, or inspect at most eight page spans.
  * This prevents SSD1306 transport from delaying the foreground scanner. */
 void OLED_Service(uint32_t now_ms)
 {
@@ -279,7 +283,7 @@ void OLED_Service(uint32_t now_ms)
         }
         if(s_async_phase==1u){
             if(!OLED_PortAsyncStart(OLED_I2C_ADDR,0x40u,
-                                    s_page_data,OLED_TX_CHUNK)){
+                                    s_page_data,s_active_length)){
                 ++s_stats.errors;
                 s_async_phase=0u;
                 s_retry_after_ms=now_ms+OLED_ASYNC_RETRY_MS;
@@ -288,11 +292,12 @@ void OLED_Service(uint32_t now_ms)
             s_phase_started_ms=now_ms;
             s_async_phase=2u;
         } else {
-            memcpy(&s_displayed[(uint16_t)s_active_page*OLED_TX_CHUNK],
-                   s_page_data,OLED_TX_CHUNK);
+            memcpy(&s_displayed[(uint16_t)s_active_page*OLED_TX_CHUNK+
+                                s_active_column],
+                   s_page_data,s_active_length);
             s_page_valid[s_active_page]=1u;
             ++s_stats.pages_sent;
-            s_stats.data_bytes_sent+=OLED_TX_CHUNK;
+            s_stats.data_bytes_sent+=s_active_length;
             s_scan_page=(uint8_t)(s_active_page+1u);
             s_async_phase=0u;
         }
@@ -314,13 +319,31 @@ void OLED_Service(uint32_t now_ms)
         return;
     }
     s_active_page=s_scan_page;
-    memcpy(s_page_data,
-           &oled_framebuffer[(uint16_t)s_active_page*OLED_TX_CHUNK],
-           OLED_TX_CHUNK);
-    /* A single command transaction constrains both column and page.
-     * Data transaction then writes exactly one page (128 bytes). */
-    s_page_commands[0]=0x21u; s_page_commands[1]=0u;
-    s_page_commands[2]=127u;  s_page_commands[3]=0x22u;
+    /* Invalid shadow: refresh the whole page. Otherwise find the smallest
+     * contiguous column span enclosing every changed byte in this page.
+     * A single changed pixel now transfers just one byte of display RAM. */
+    const uint16_t offset=(uint16_t)s_active_page*OLED_TX_CHUNK;
+    uint8_t first=0u, last=OLED_TX_CHUNK-1u;
+    if(s_page_valid[s_active_page]) {
+        while(first<OLED_TX_CHUNK &&
+              s_displayed[offset+first]==oled_framebuffer[offset+first])
+            ++first;
+        if(first==OLED_TX_CHUNK) {
+            ++s_stats.pages_skipped;
+            ++s_scan_page;
+            return;
+        }
+        while(last>first &&
+              s_displayed[offset+last]==oled_framebuffer[offset+last])
+            --last;
+    }
+    s_active_column=first;
+    s_active_length=(uint8_t)(last-first+1u);
+    memcpy(s_page_data,&oled_framebuffer[offset+first],s_active_length);
+    /* The command constrains both SSD1306 column and page addresses.
+     * This same 6-command setup is used for either a full or partial page. */
+    s_page_commands[0]=0x21u; s_page_commands[1]=first;
+    s_page_commands[2]=last;  s_page_commands[3]=0x22u;
     s_page_commands[4]=s_active_page;
     s_page_commands[5]=s_active_page;
     if(!OLED_PortAsyncStart(OLED_I2C_ADDR,0x00u,s_page_commands,6u)){
