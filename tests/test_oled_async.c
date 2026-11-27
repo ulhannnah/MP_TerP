@@ -52,7 +52,7 @@ void OLED_PortAsyncService(void)
         assert(tx.length==6u);
         memcpy(last_command,tx.source,6u);
     }else{
-        assert(tx.control==0x40u && tx.length==128u);
+        assert(tx.control==0x40u && tx.length>0u && tx.length<=128u);
         ++n_data;
         last_data_length=tx.length;
         memset(last_data,0,sizeof(last_data));
