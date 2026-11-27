@@ -6,6 +6,16 @@
                          LPI2C_MSR_FEF_MASK | LPI2C_MSR_PLTF_MASK)
 #define PORT_WAIT_LIMIT (1000000u)
 
+/* At most one MTDR write per foreground service; never spin on TDF. */
+typedef struct {
+    const uint8_t *data;
+    uint16_t len, sent;
+    uint8_t address, control, phase;
+    uint8_t active;
+    int status;
+} OLEDAsyncPort;
+static OLEDAsyncPort s_async;
+
 /* Existing wiring preserved as fallback; all parameters may be overridden. */
 static OLEDPortConfig s_config;
 static uint8_t s_has_config;
@@ -34,6 +44,8 @@ void OLED_PortInit(void){
         cfg.set_hold=8u;cfg.data_valid=4u;
     }
     s_bus=cfg.bus;
+    s_async.active=0u;
+    s_async.status=0;
     PCC->PCCn[cfg.sda_port_pcc_index] |= PCC_PCCn_CGC_MASK;
     PCC->PCCn[cfg.scl_port_pcc_index] |= PCC_PCCn_CGC_MASK;
     cfg.sda_port->PCR[cfg.sda_pin]=PORT_PCR_MUX(cfg.sda_alt);
@@ -66,6 +78,7 @@ int OLED_PortWrite(uint8_t address7,uint8_t control,
                    const uint8_t *data,uint16_t len){
     int result;
     if(!s_bus)return -5;
+    if(s_async.active)return -6;
     if((data==0&&len!=0u)||address7>0x7fu)return -4;
     s_bus->MSR=LPI2C_MSR_SDF_MASK|PORT_I2C_ERRORS;
     result=port_put(LPI2C_MTDR_CMD(4)|LPI2C_MTDR_DATA((uint32_t)address7<<1));
@@ -86,4 +99,75 @@ int OLED_PortWrite(uint8_t address7,uint8_t control,
         }
     }
     return -3;
+}
+
+/* Non-blocking foreground port service. Only one FIFO word can be sent
+ * per call, so it does not monopolize the app's cooperative event loop. */
+bool OLED_PortAsyncStart(uint8_t address7, uint8_t control,
+                         const uint8_t *data, uint16_t len)
+{
+    if(!s_bus || s_async.active || (data==NULL && len!=0u) ||
+       address7>0x7fu)return false;
+    s_async.data=data;
+    s_async.len=len;
+    s_async.sent=0u;
+    s_async.address=address7;
+    s_async.control=control;
+    s_async.phase=0u;
+    s_bus->MSR=LPI2C_MSR_SDF_MASK|PORT_I2C_ERRORS;
+    s_async.status=1;
+    s_async.active=1u;
+    return true;
+}
+
+void OLED_PortAsyncService(void)
+{
+    uint32_t msr;
+    if(!s_async.active || !s_bus)return;
+    msr=s_bus->MSR;
+    if((msr&PORT_I2C_ERRORS)!=0u){
+        s_async.active=0u;s_async.status=-2;return;
+    }
+    if(s_async.phase==4u){
+        if((msr&LPI2C_MSR_SDF_MASK)!=0u){
+            s_bus->MSR=LPI2C_MSR_SDF_MASK;
+            s_async.active=0u;s_async.status=0;
+        }
+        return;
+    }
+    if((msr&LPI2C_MSR_TDF_MASK)==0u)return;
+    switch(s_async.phase){
+    case 0u:
+        s_bus->MTDR=LPI2C_MTDR_CMD(4)|
+                    LPI2C_MTDR_DATA((uint32_t)s_async.address<<1);
+        s_async.phase=1u;
+        break;
+    case 1u:
+        s_bus->MTDR=LPI2C_MTDR_CMD(0)|
+                    LPI2C_MTDR_DATA(s_async.control);
+        s_async.phase=2u;
+        break;
+    case 2u:
+        if(s_async.sent<s_async.len){
+            s_bus->MTDR=LPI2C_MTDR_CMD(0)|
+                        LPI2C_MTDR_DATA(s_async.data[s_async.sent]);
+            ++s_async.sent;
+        } else {
+            s_bus->MTDR=LPI2C_MTDR_CMD(2);
+            s_async.phase=4u;
+        }
+        break;
+    default:
+        s_async.active=0u;s_async.status=-4;
+        break;
+    }
+}
+int OLED_PortAsyncStatus(void){return s_async.status;}
+void OLED_PortAsyncAbort(void)
+{
+    if(!s_async.active)return;
+    /* Only on timeout. Reset and restore LPI2C port configuration. */
+    OLED_PortInit();
+    s_async.active=0u;
+    s_async.status=-3;
 }
