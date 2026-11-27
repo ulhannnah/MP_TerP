@@ -388,6 +388,13 @@ int main(void)
 
     uint32_t last_trigger=0u;
     uint32_t virtual_time_ms=0u;
+#if MP_TERP_STAGE == 5
+    /* Foreground I2C needs frequent service; debugger-visible snapshots do
+     * not. Decimate costly volatile telemetry to 100 Hz without delaying
+     * any sensor, OLED, button or relay task. */
+    uint32_t stage_last_telemetry_ms=UINT32_MAX;
+    uint32_t stage_observed_max_update_cycles=0u;
+#endif
     for(;;) {
         if(g_stage_state==0xDEADu)continue;
 #if MP_TERP_STAGE == 4
@@ -417,36 +424,44 @@ int main(void)
         uint32_t update_start=STAGE_DWT_CYC;
         BoardSystem_Update(&s_board);
         uint32_t update_cycles=STAGE_DWT_CYC-update_start;
-        g_stage_update_cycles_last=update_cycles;
-        if(update_cycles>g_stage_update_cycles_max)
-            g_stage_update_cycles_max=update_cycles;
-        /* Snapshot the non-blocking OLED transfer counters for S32DS. */
-        OLEDTransferStats oled_stats;
-        OLED_GetTransferStats(&oled_stats);
-        g_stage_oled_pages_sent=oled_stats.pages_sent;
-        g_stage_oled_pages_skipped=oled_stats.pages_skipped;
-        g_stage_oled_data_bytes=oled_stats.data_bytes_sent;
-        g_stage_oled_errors=oled_stats.errors;
-        g_stage_oled_busy=oled_stats.busy;
-        g_stage_tick_ms=TimerManager_GetTickMs();
-        g_stage_stepper_center_homed=
-            StepperController_IsHomed(&s_board.stepper)?1u:0u;
-        g_stage_scan_command_mdeg=s_board.app.scan.angle_mdeg;
-        g_stage_fire_state=(uint32_t)s_board.app.fire_state;
-        g_stage_fixed_echo_samples=s_board.app.diagnostic_samples;
-        g_stage_fixed_echo_valid=s_board.app.diagnostic_valid;
-        g_stage_fixed_echo_mm=s_board.app.diagnostic_range_mm;
-        g_stage_adc_raw=s_board.app.last_adc_raw;
-        g_stage_adc_manual_angle_mdeg=
-            s_board.app.diagnostic_selected_angle_mdeg;
-        g_stage_button_aim_count=s_board.external_aim_press_count;
-        g_stage_button_relay_count=s_board.external_relay_press_count;
-        g_stage_relay_active=s_board.relay_active;
-        g_stage_relay_armed=s_board.relay_armed;
-        g_stage_relay_pulses=s_board.relay_pulse_count;
-        g_stage_frames=s_board.app.processing.display_frame.frame_number;
-        g_stage_candidates=s_board.app.processing.candidate_count;
-        g_stage_selected_id=TargetSelector_GetId(&s_board.app.selector);
+        if(update_cycles>stage_observed_max_update_cycles)
+            stage_observed_max_update_cycles=update_cycles;
+        /* Updating all volatile Expressions on every fast foreground pass
+         * can itself dominate the service loop. Publish at most every
+         * 10ms; retain the true maximum observed across ALL iterations. */
+        uint32_t snapshot_ms=TimerManager_GetTickMs();
+        if(stage_last_telemetry_ms==UINT32_MAX ||
+           (uint32_t)(snapshot_ms-stage_last_telemetry_ms)>=10u) {
+            stage_last_telemetry_ms=snapshot_ms;
+            g_stage_update_cycles_last=update_cycles;
+            g_stage_update_cycles_max=stage_observed_max_update_cycles;
+            OLEDTransferStats oled_stats;
+            OLED_GetTransferStats(&oled_stats);
+            g_stage_oled_pages_sent=oled_stats.pages_sent;
+            g_stage_oled_pages_skipped=oled_stats.pages_skipped;
+            g_stage_oled_data_bytes=oled_stats.data_bytes_sent;
+            g_stage_oled_errors=oled_stats.errors;
+            g_stage_oled_busy=oled_stats.busy;
+            g_stage_tick_ms=snapshot_ms;
+            g_stage_stepper_center_homed=
+                StepperController_IsHomed(&s_board.stepper)?1u:0u;
+            g_stage_scan_command_mdeg=s_board.app.scan.angle_mdeg;
+            g_stage_fire_state=(uint32_t)s_board.app.fire_state;
+            g_stage_fixed_echo_samples=s_board.app.diagnostic_samples;
+            g_stage_fixed_echo_valid=s_board.app.diagnostic_valid;
+            g_stage_fixed_echo_mm=s_board.app.diagnostic_range_mm;
+            g_stage_adc_raw=s_board.app.last_adc_raw;
+            g_stage_adc_manual_angle_mdeg=
+                s_board.app.diagnostic_selected_angle_mdeg;
+            g_stage_button_aim_count=s_board.external_aim_press_count;
+            g_stage_button_relay_count=s_board.external_relay_press_count;
+            g_stage_relay_active=s_board.relay_active;
+            g_stage_relay_armed=s_board.relay_armed;
+            g_stage_relay_pulses=s_board.relay_pulse_count;
+            g_stage_frames=s_board.app.processing.display_frame.frame_number;
+            g_stage_candidates=s_board.app.processing.candidate_count;
+            g_stage_selected_id=TargetSelector_GetId(&s_board.app.selector);
+        }
 #elif MP_TERP_STAGE == 2
         g_stage_tick_ms=TimerManager_GetTickMs();
         int32_t request=g_stage_servo_request_mdeg;
