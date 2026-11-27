@@ -57,6 +57,8 @@ static void test_dma_buffer_and_tcd(void)
     /* On this non-PIE Linux test, static data pointers fit 32 bits. */
     const uint32_t *src=(const uint32_t *)(uintptr_t)DMA->TCD[0].SADDR;
     for(uint32_t i=0;i<6u;i++)assert(src[i]==expected[i]);
+    /* MSR is write-one-to-clear on silicon, plain RW in this mock. */
+    LPI2C0->MSR=0u;
     OLED_PortAsyncService();
     assert(OLED_PortAsyncStatus()==1);
     /* DMA major-loop DONE is insufficient without actual I2C STOP. */
