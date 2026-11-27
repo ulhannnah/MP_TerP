@@ -72,6 +72,11 @@ volatile uint32_t g_stage_relay_armed;
 volatile uint32_t g_stage_relay_pulses;
 volatile uint32_t g_stage_wdog_cs_before;
 volatile uint32_t g_stage_wdog_cs_after;
+volatile uint32_t g_stage_oled_pages_sent;
+volatile uint32_t g_stage_oled_pages_skipped;
+volatile uint32_t g_stage_oled_data_bytes;
+volatile uint32_t g_stage_oled_errors;
+volatile uint32_t g_stage_oled_busy;
 
 static void stage_fault(uint32_t error)
 {
@@ -285,6 +290,11 @@ int main(void)
     g_stage_relay_pulses=0u;
     g_stage_wdog_cs_before=0u;
     g_stage_wdog_cs_after=0u;
+    g_stage_oled_pages_sent=0u;
+    g_stage_oled_pages_skipped=0u;
+    g_stage_oled_data_bytes=0u;
+    g_stage_oled_errors=0u;
+    g_stage_oled_busy=0u;
 
 #if MP_TERP_STAGE == 4
     /* Synthetic bench: does not configure clocks or touch peripheral registers. */
@@ -388,6 +398,14 @@ int main(void)
             else g_stage_error=54u;
         }
         BoardSystem_Update(&s_board);
+        /* Snapshot the non-blocking OLED transfer counters for S32DS. */
+        OLEDTransferStats oled_stats;
+        OLED_GetTransferStats(&oled_stats);
+        g_stage_oled_pages_sent=oled_stats.pages_sent;
+        g_stage_oled_pages_skipped=oled_stats.pages_skipped;
+        g_stage_oled_data_bytes=oled_stats.data_bytes_sent;
+        g_stage_oled_errors=oled_stats.errors;
+        g_stage_oled_busy=oled_stats.busy;
         g_stage_tick_ms=TimerManager_GetTickMs();
         g_stage_stepper_center_homed=
             StepperController_IsHomed(&s_board.stepper)?1u:0u;
