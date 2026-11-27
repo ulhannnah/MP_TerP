@@ -22,6 +22,7 @@ static void init_port(void)
     cfg.set_hold=8u;cfg.data_valid=4u;
     assert(OLED_PortConfigure(&cfg));
     OLED_PortInit();
+    assert(OLED_PortTransportMode()==0u);
     assert((mock_lpi2c.MCR&LPI2C_MCR_MEN_MASK)!=0u);
 }
 static void test_one_word_per_service_and_stop(void)
