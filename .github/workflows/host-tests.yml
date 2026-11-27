@@ -30,6 +30,8 @@ jobs:
         run: bash tests/run_lcd_async_tests.sh
       - name: OLED 비차단 페이지 갱신 / 전송 버퍼 테스트
         run: bash tests/run_oled_async_tests.sh
+      - name: LPI2C 레지스터 비차단 전송 엔진 테스트
+        run: bash tests/run_oled_port_async_tests.sh
       - name: 최종 실행 모드 및 테스트 모드 분기 확인
         run: bash tests/run_final_entry_tests.sh
       - name: 최종 레이더 자동 스캔·검출·조준 가상 통합
