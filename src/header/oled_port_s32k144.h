@@ -3,6 +3,18 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "device_registers.h"
+/* Default OFF until an S32K144EVB eDMA hardware build/board check.
+ * Build with -DMP_TERP_OLED_EDMA_ENABLE=1 to select experimental eDMA.
+ * This reserves eDMA channel 0 and DMAMUX channel 0 exclusively for OLED;
+ * LPI2C0 TX hardware request source is 45 on S32K144.
+ * Fallback: omit symbol or set it to 0 for the validated polling FSM. */
+#ifndef MP_TERP_OLED_EDMA_ENABLE
+#define MP_TERP_OLED_EDMA_ENABLE 0
+#endif
+#if MP_TERP_OLED_EDMA_ENABLE != 0 && MP_TERP_OLED_EDMA_ENABLE != 1
+#error "MP_TERP_OLED_EDMA_ENABLE must be 0 or 1"
+#endif
+
 /* Optional override for existing OLED_PortInit/OLED_PortWrite. Configure
  * before OLED_Init(), otherwise the original LPI2C0 PTA2/PTA3 is used. */
 typedef struct {
