@@ -41,7 +41,7 @@ typedef struct {
     void (*led_write)(void *user,bool on);
     uint8_t use_gpio_led;
     GpioOutputConfig led_gpio;
-    uint8_t use_gpio_button; /* final PTC4 external AIM input */
+    uint8_t use_gpio_button; /* final PTC8 external AIM input */
     GpioButtonConfig button_gpio;
     uint8_t use_home_button; /* optional legacy home input */
     GpioButtonConfig home_button_gpio;
